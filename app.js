@@ -652,7 +652,7 @@ const pairStorage={
     renderCustomOptions();
     if(key==='passion'){passionActionSlot.setPool(actionPool());passionActionSlot.reset();passionBodySlot.reset();}
     if(key==='direct') directBodySlot.reset();
-    if(key==='randomPose') resetRandomPosePreview();
+    if(key==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}
     document.body.dataset.activeGame=key;
     delete document.body.dataset.gameMenu;
     if(syncSession) pairStorage.setItem(ACTIVE_GAME_KEY,key);
@@ -976,8 +976,13 @@ const pairStorage={
     // Safety fallback if the remote side disappears during the handshake.
     setTimeout(()=>{
       const p=randomSpinPending.get(spinId);if(!p||p.started)return;
-      p.started=true;const startAt=Date.now()+250;
-      runRandomPoseSpin(p.target,false,startAt,p.turn).finally(()=>{randomSpinPending.delete(spinId);setRandomSpinButtonBusy(false)});
+      p.started=true;const startAt=Date.now()+350;
+      // Fallback теж надсилає START партнеру: навіть якщо READY загубився,
+      // обидва пристрої все одно отримають однакову ціль і час запуску.
+      window.SessionSync?.replyUI?.('game-action',{action:'random-pose-start',spinId,startAt,order:p.target,turn:p.turn,ids:p.ids});
+      runRandomPoseSpin(p.target,false,startAt,p.turn).then(target=>{
+        if(target)window.SessionSync?.replyUI?.('game-action',{action:'random-pose-result',spinId,order:target.order_index,ids:p.ids});
+      }).finally(()=>{randomSpinPending.delete(spinId);setRandomSpinButtonBusy(false)});
     },3500);
   }
   $('#randomPoseSpinBtn')?.addEventListener('click',()=>beginSyncedRandomPoseSpin());
@@ -1040,6 +1045,8 @@ const pairStorage={
 
   function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=(connected&&runtimeGame&&gameMeta[runtimeGame])?runtimeGame:storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
+  document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose')renderRandomLevelFilter();});
+  
   document.addEventListener('session:remote-ui',e=>{
     const m=e.detail||{};
     if(m.kind==='tab'&&m.payload?.which) showTab(m.payload.which,false);
@@ -1060,16 +1067,16 @@ const pairStorage={
         const pool=getRandomPosePool();
         randomSpinPending.set(spinId,{role:'receiver',target:m.payload.order,turn:m.payload.turn,ids:m.payload.ids||[],started:false});
         setRandomSpinButtonBusy(true);
-        preloadPosePool(pool).then(()=>window.SessionSync?.sendUI?.('game-action',{action:'random-pose-ready',spinId}));
+        preloadPosePool(pool).then(()=>window.SessionSync?.replyUI?.('game-action',{action:'random-pose-ready',spinId}));
       }
       if(a==='random-pose-ready'){
         const p=randomSpinPending.get(m.payload.spinId);
         if(p&&p.role==='initiator'&&!p.started){
           p.started=true;
-          const startAt=Date.now()+700;
-          window.SessionSync?.sendUI?.('game-action',{action:'random-pose-start',spinId:m.payload.spinId,startAt,order:p.target,turn:p.turn,ids:p.ids});
+          const startAt=Date.now()+320;
+          window.SessionSync?.replyUI?.('game-action',{action:'random-pose-start',spinId:m.payload.spinId,startAt,order:p.target,turn:p.turn,ids:p.ids});
           runRandomPoseSpin(p.target,false,startAt,p.turn).then(target=>{
-            if(target) window.SessionSync?.sendUI?.('game-action',{action:'random-pose-result',spinId:m.payload.spinId,order:target.order_index,ids:p.ids});
+            if(target) window.SessionSync?.replyUI?.('game-action',{action:'random-pose-result',spinId:m.payload.spinId,order:target.order_index,ids:p.ids});
           }).finally(()=>{randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false)});
         }
       }
@@ -1205,7 +1212,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   document.addEventListener('pair:changed',()=>{renderSecret();renderBattle()});renderSecret();
 })();
 
-// --- P2P session sync v24: stable UI + auto restore ---
+// --- P2P session sync v31: stable UI + auto restore + control replies ---
 (() => {
   'use strict';
   const $=s=>document.querySelector(s);
@@ -1227,6 +1234,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   function send(msg){if(conn?.open)try{conn.send(msg)}catch(e){console.warn('session send',e)}}
   function sendPair(pair){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap)})}
   function sendUI(kind,payload={}){if(!conn?.open||uiApply)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now()})}
+  function replyUI(kind,payload={}){if(!conn?.open)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now(),reply:true})}
   async function saveSessionMeta(mode,sessionCode){
     try{await PairDB.setMeta(SESSION_META,{mode,code:sessionCode,role:localRole,pairId:PairDB.active?.id||null,updatedAt:Date.now()})}catch(e){console.warn('session meta save',e)}
   }
@@ -1244,7 +1252,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     const slots=slotSelectors.map(sel=>document.querySelector(sel)?.innerHTML||'');
     const pd=$('#positionDialog');
     const position=pd?{open:pd.open,category:$('#positionCategoryTitle')?.textContent||'',title:$('#positionDayTitle')?.textContent||'',src:$('#calendarPositionImage')?.getAttribute('src')||'',instruction:$('#positionInstruction')?.textContent||'',metaHidden:$('#positionMeta')?.hidden??true,name:$('#positionPoseName')?.textContent||'',description:$('#positionPoseDescription')?.textContent||''}:null;
-    return {fields,slots,directAction:activeDirect?.dataset.action||null,scenarioMode:activeScenario?.dataset.mode||null,position,mainTab:document.body.dataset.mainTab||null,activeGame:document.body.dataset.activeGame||null,gameMenu:document.body.dataset.gameMenu==='1'};
+    return {fields,slots,directAction:activeDirect?.dataset.action||null,scenarioMode:activeScenario?.dataset.mode||null,randomPoseLevels:(()=>{try{return JSON.parse(pairStorage.getItem('sa_random_pose_levels_v1')||'[]')}catch{return []}})(),position,mainTab:document.body.dataset.mainTab||null,activeGame:document.body.dataset.activeGame||null,gameMenu:document.body.dataset.gameMenu==='1'};
   }
   function applyUI(snap){
     if(!snap)return;uiApply=true;
@@ -1262,11 +1270,12 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       (snap.slots||[]).forEach((html,i)=>{const track=document.querySelector(slotSelectors[i]);if(track&&html)track.innerHTML=html});
       if(snap.directAction)document.querySelectorAll('#directActionChoice .choice-btn').forEach(b=>b.classList.toggle('active',b.dataset.action===snap.directAction));
       if(snap.scenarioMode)document.querySelectorAll('#scenarioSecondType [data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===snap.scenarioMode));
+      if(Array.isArray(snap.randomPoseLevels)&&snap.randomPoseLevels.length)document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game-action',payload:{action:'random-pose-levels',ids:snap.randomPoseLevels},fromSnapshot:true}}));
       if(snap.position){const p=snap.position,dlg=$('#positionDialog');if(dlg){if($('#positionCategoryTitle'))$('#positionCategoryTitle').textContent=p.category;if($('#positionDayTitle'))$('#positionDayTitle').textContent=p.title;if($('#calendarPositionImage')&&p.src)$('#calendarPositionImage').src=p.src;if($('#positionInstruction'))$('#positionInstruction').textContent=p.instruction;if($('#positionMeta'))$('#positionMeta').hidden=p.metaHidden;if($('#positionPoseName'))$('#positionPoseName').textContent=p.name;if($('#positionPoseDescription'))$('#positionPoseDescription').textContent=p.description;if(p.open&&!dlg.open)try{dlg.showModal()}catch{};if(!p.open&&dlg.open)dlg.close()}}
     }finally{setTimeout(()=>uiApply=false,100)}
   }
   function scheduleUISnapshot(delay=140){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{if(conn?.open&&!uiApply)send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now()})},delay)}
-  window.SessionSync={sendUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open}};
+  window.SessionSync={sendUI,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open}};
 
   function clearReconnect(){clearTimeout(reconnectTimer);reconnectTimer=null;reconnectAttempts=0}
   function scheduleGuestReconnect(sessionCode){
