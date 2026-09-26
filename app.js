@@ -80,7 +80,7 @@ const pairStorage={
     allDialog: $('#allPositionsDialog'), closeAllDialog: $('#closeAllPositionsDialog'), allGrid: $('#allPositionsGrid'),
     dialog: $('#positionDialog'), close: $('#closePositionDialog'),
     categoryTitle: $('#positionCategoryTitle'), dayTitle: $('#positionDayTitle'), image: $('#calendarPositionImage'), canvas: $('#positionScratchCanvas'),
-    instruction: $('#positionInstruction'), reveal: $('#revealPositionBtn'), complete: $('#completePositionBtn'), toast: $('#toast')
+    instruction: $('#positionInstruction'), poseMeta: $('#positionMeta'), poseName: $('#positionPoseName'), poseDescription: $('#positionPoseDescription'), reveal: $('#revealPositionBtn'), complete: $('#completePositionBtn'), toast: $('#toast')
   };
 
   // Same keys as previous MF versions: old progress is preserved.
@@ -314,6 +314,13 @@ const pairStorage={
     return checked ? clear/checked : 0;
   }
 
+  function updatePositionMeta(item, visible){
+    if(!els.poseMeta || !item) return;
+    els.poseName.textContent = item.poseTitle || ('Поза ' + item.order_index);
+    els.poseDescription.textContent = item.poseDescription || '';
+    els.poseMeta.hidden = !visible;
+  }
+
   function reveal(save=true){
     if(!current) return;
     revealedNow = true; els.canvas.style.opacity = '0'; els.canvas.style.pointerEvents = 'none';
@@ -321,19 +328,22 @@ const pairStorage={
     const done = readSet(DONE_KEY).has(current.id);
     els.complete.disabled = done; els.complete.textContent = done ? 'Вже виконано ✓' : 'Виконано ✓';
     els.instruction.textContent = done ? 'Цю позицію вже виконано.' : 'Позиція відкрита. Після виконання натисніть «Виконано».';
+    updatePositionMeta(current, true);
     render();
   }
 
   function openPosition(item,globalIndex,catIndex,localIndex,isDone){
     current = item; currentGlobalIndex = globalIndex; currentCategoryIndex = catIndex;
     els.categoryTitle.textContent = CATEGORIES[catIndex].name.toUpperCase();
-    els.dayTitle.textContent = `Позиція ${localIndex+1}`;
-    els.image.src = item.image; els.image.alt = `${CATEGORIES[catIndex].name}, позиція ${localIndex+1}`;
+    els.dayTitle.textContent = `Поза ${item.order_index}`;
+    els.image.src = item.image; els.image.alt = item.poseTitle || ('Поза ' + item.order_index);
+    updatePositionMeta(item, false);
     els.dialog.showModal();
     const alreadyRevealed = readSet(REVEALED_KEY).has(item.id) || isDone;
     els.complete.disabled = !alreadyRevealed || isDone;
     els.complete.textContent = isDone ? 'Вже виконано ✓' : 'Виконано ✓';
     els.instruction.textContent = isDone ? 'Цю позицію вже виконано.' : alreadyRevealed ? 'Позиція відкрита. Після виконання натисніть «Виконано».' : 'Зітріть захисний шар, щоб відкрити позицію.';
+    updatePositionMeta(item, alreadyRevealed || isDone);
     requestAnimationFrame(() => alreadyRevealed ? reveal(false) : drawCover());
   }
 
@@ -416,7 +426,7 @@ const pairStorage={
   const playersPanel=$('#playersPanel');
   const gameViews={passion:$('#passionGameView'),direct:$('#directGameView'),randomPose:$('#randomPoseGameView')};
   const gameMeta={
-    passion:{title:'🎰 Кубик Страсті',players:true,custom:true},
+    passion:{title:'🎰 Рулетка Страсті',players:true,custom:true},
     direct:{title:'🎲 Прямолінійний кубик',players:true,custom:true},
     randomPose:{title:'🎡 Випадкова поза',players:false,custom:false}
   };
@@ -697,7 +707,7 @@ const pairStorage={
     {id:'acro',name:'Акробатичний',from:295,to:312}
   ];
   const RANDOM_LEVELS_KEY='sa_random_pose_levels_v1';
-  const fortuneWheel=$('#fortuneWheel'), fortuneWheelRotor=$('#fortuneWheelRotor'), randomPosePreview=$('#randomPosePreview'), randomPoseNumber=$('#randomPoseNumber'), randomPoseResultBox=$('#randomPoseResultBox'), randomPoseResult=$('#randomPoseResult');
+  const fortuneWheel=$('#fortuneWheel'), fortuneWheelRotor=$('#fortuneWheelRotor'), randomPosePreview=$('#randomPosePreview'), randomPoseNumber=$('#randomPoseNumber'), randomPoseCaption=$('#randomPoseCaption'), randomPoseResultBox=$('#randomPoseResultBox'), randomPoseResultIndex=$('#randomPoseResultIndex'), randomPoseResult=$('#randomPoseResult'), randomPoseDescription=$('#randomPoseDescription');
   const fortuneLevelOptions=$('#fortuneLevelOptions'), fortuneLevelSummary=$('#fortuneLevelSummary');
   let randomPoseCurrent=RANDOM_POSITIONS[0]||null, randomPoseBusy=false, fortuneTurns=0;
   function getSelectedRandomLevels(){
@@ -730,36 +740,68 @@ const pairStorage={
     fortuneLevelSummary.textContent=`Обрано: ${names.join(', ')} · ${count} поз`;
   }
   $('#fortuneSelectAllLevelsBtn')?.addEventListener('click',()=>{saveSelectedRandomLevels(RANDOM_LEVELS.map(x=>x.id));renderRandomLevelFilter();if(randomPoseResultBox)randomPoseResultBox.hidden=true;});
+  const poseImageCache=new Map();
+  function preloadPoseImage(item){
+    if(!item?.image)return Promise.resolve();
+    if(poseImageCache.has(item.image))return poseImageCache.get(item.image);
+    const promise=new Promise(resolve=>{
+      const img=new Image();
+      img.decoding='async';
+      img.onload=()=>{ Promise.resolve(img.decode?.()).catch(()=>{}).finally(()=>resolve(img)); };
+      img.onerror=()=>resolve(null);
+      img.src=item.image;
+    });
+    poseImageCache.set(item.image,promise);
+    return promise;
+  }
+  async function preloadPosePool(pool){
+    await Promise.all(pool.map(preloadPoseImage));
+  }
   function setRandomPose(item){
     if(!item)return; randomPoseCurrent=item;
-    if(randomPosePreview) randomPosePreview.src=item.image;
+    if(randomPosePreview && randomPosePreview.getAttribute('src')!==item.image){
+      randomPosePreview.src=item.image;
+      randomPosePreview.alt=item.poseTitle || ('Поза ' + item.order_index);
+    }
     if(randomPoseNumber) randomPoseNumber.textContent=`Поза ${item.order_index}`;
+    if(randomPoseCaption) randomPoseCaption.textContent=item.poseTitle || ('Поза ' + item.order_index);
   }
   function resetRandomPosePreview(){ const pool=getRandomPosePool(); if(randomPoseResultBox)randomPoseResultBox.hidden=true; setRandomPose(pool.includes(randomPoseCurrent)?randomPoseCurrent:(pool[0]||RANDOM_POSITIONS[0])); }
   $('#randomPoseSpinBtn')?.addEventListener('click',async e=>{
     const pool=getRandomPosePool();
     if(randomPoseBusy||!pool.length)return;
     const button=e.currentTarget; randomPoseBusy=true; if(button)button.disabled=true; if(randomPoseResultBox)randomPoseResultBox.hidden=true;
-    const target=pool[Math.floor(Math.random()*pool.length)];
-    fortuneTurns+=5+Math.floor(Math.random()*3);
-    if(fortuneWheelRotor){ fortuneWheelRotor.style.transition='transform 3.15s cubic-bezier(.08,.72,.08,1)'; fortuneWheelRotor.style.transform=`rotate(${fortuneTurns*360 + Math.floor(Math.random()*340)}deg)`; }
-    const start=performance.now(), duration=3050;
-    await new Promise(resolve=>{
-      const tick=now=>{
-        const t=Math.min(1,(now-start)/duration); const delay=45+Math.floor(190*t*t);
-        setRandomPose(pool[Math.floor(Math.random()*pool.length)]);
-        if(t>=1){resolve();return} setTimeout(()=>requestAnimationFrame(tick),delay);
-      }; requestAnimationFrame(tick);
-    });
-    setRandomPose(target);
-    if(randomPoseResult)randomPoseResult.textContent=`Поза ${target.order_index}`;
-    if(randomPoseResultBox)randomPoseResultBox.hidden=false;
-    randomPoseBusy=false; if(button)button.disabled=false;
+    try{
+      // Decode the selected pose set before the animation starts. This prevents
+      // blank/flickering frames while the center image is changing rapidly.
+      await preloadPosePool(pool);
+      const target=pool[Math.floor(Math.random()*pool.length)];
+      fortuneTurns+=5+Math.floor(Math.random()*3);
+      if(fortuneWheelRotor){ fortuneWheelRotor.style.transition='transform 3.15s cubic-bezier(.08,.72,.08,1)'; fortuneWheelRotor.style.transform=`rotate(${fortuneTurns*360 + Math.floor(Math.random()*340)}deg)`; }
+      const frames=[...pool].sort(()=>Math.random()-.5);
+      let frameIndex=0;
+      const start=performance.now(), duration=3050;
+      await new Promise(resolve=>{
+        const tick=now=>{
+          const t=Math.min(1,(now-start)/duration); const delay=55+Math.floor(210*t*t);
+          const item=frames[frameIndex++%frames.length];
+          setRandomPose(item);
+          if(t>=1){resolve();return} setTimeout(()=>requestAnimationFrame(tick),delay);
+        }; requestAnimationFrame(tick);
+      });
+      setRandomPose(target);
+      if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${target.order_index}`;
+      if(randomPoseResult)randomPoseResult.textContent=target.poseTitle || (`Поза ${target.order_index}`);
+      if(randomPoseDescription)randomPoseDescription.textContent=target.poseDescription || '';
+      if(randomPoseResultBox)randomPoseResultBox.hidden=false;
+    }finally{
+      randomPoseBusy=false; if(button)button.disabled=false;
+    }
   });
   $('#randomPoseOpenBtn')?.addEventListener('click',()=>{
     if(!randomPoseCurrent)return;
     const dlg=document.createElement('dialog'); dlg.className='dialog random-pose-zoom-dialog';
-    dlg.innerHTML=`<div class="random-pose-zoom"><button class="icon-btn random-zoom-close" aria-label="Закрити">×</button><img src="${randomPoseCurrent.image}" alt="Поза ${randomPoseCurrent.order_index}"><strong>Поза ${randomPoseCurrent.order_index}</strong></div>`;
+    dlg.innerHTML=`<div class="random-pose-zoom"><button class="icon-btn random-zoom-close" aria-label="Закрити">×</button><img src="${randomPoseCurrent.image}" alt="${randomPoseCurrent.poseTitle || ('Поза ' + randomPoseCurrent.order_index)}"><small>Поза ${randomPoseCurrent.order_index}</small><strong>${randomPoseCurrent.poseTitle || ('Поза ' + randomPoseCurrent.order_index)}</strong><p>${randomPoseCurrent.poseDescription || ''}</p></div>`;
     document.body.appendChild(dlg); dlg.querySelector('.random-zoom-close')?.addEventListener('click',()=>dlg.close()); dlg.addEventListener('close',()=>dlg.remove()); dlg.showModal();
   });
   renderRandomLevelFilter();

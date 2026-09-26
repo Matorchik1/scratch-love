@@ -126,7 +126,7 @@
       <section id="gamesMenu" class="games-menu">
         <button class="game-launch-card" data-game="passion" type="button">
           <span class="game-launch-icon" aria-hidden="true">🎰</span>
-          <span><strong>Кубик Страсті</strong><small>Дія + частина тіла, по черзі для двох</small></span>
+          <span><strong>Рулетка Страсті</strong><small>Дія + частина тіла, по черзі для двох</small></span>
           <span class="game-launch-arrow">›</span>
         </button>
         <button class="game-launch-card" data-game="direct" type="button">
@@ -172,7 +172,7 @@
 
         <details id="rouletteCustomPanel" class="custom-options-card" hidden>
           <summary>＋ Власні варіанти рулеток</summary>
-          <p>Варіанти зберігаються тільки для активної пари. Власна дія додається у «Кубик Страсті», а власна частина тіла — в обидві рулетки частин тіла.</p>
+          <p>Варіанти зберігаються тільки для активної пари. Власна дія додається у «Рулетка Страсті», а власна частина тіла — в обидві рулетки частин тіла.</p>
           <div class="custom-options-grid">
             <section class="custom-option-section">
               <h3>Свої дії</h3>
@@ -265,13 +265,15 @@
               <div class="fortune-center">
                 <img id="randomPosePreview" src="images/positions/mf_position_1.png" alt="Випадкова поза">
                 <span id="randomPoseNumber">Поза 1</span>
+                <small id="randomPoseCaption">Ніжна класика</small>
               </div>
             </div>
           </div>
           <button class="btn primary big-roll fortune-spin-btn" id="randomPoseSpinBtn" type="button">Крути</button>
           <div class="result-box random-pose-result" id="randomPoseResultBox" hidden>
-            <small>Обрана випадкова поза</small>
-            <strong id="randomPoseResult">Поза 1</strong>
+            <small id="randomPoseResultIndex">Поза 1</small>
+            <strong id="randomPoseResult">Ніжна класика</strong>
+            <p id="randomPoseDescription" class="random-pose-description">Короткий опис пози з урахуванням картинки.</p>
             <button class="btn secondary" id="randomPoseOpenBtn" type="button">Відкрити позу крупніше</button>
           </div>
         </article>
@@ -293,6 +295,10 @@
         <canvas id="positionScratchCanvas" aria-label="Стираємий шар позиції"></canvas>
       </div>
       <p class="position-instruction" id="positionInstruction">Зітріть захисний шар, щоб відкрити позицію.</p>
+      <div class="position-copy" id="positionMeta" hidden>
+        <strong id="positionPoseName">Назва пози</strong>
+        <p id="positionPoseDescription">Короткий опис пози.</p>
+      </div>
       <div class="position-dialog-actions">
         <button class="btn secondary" id="revealPositionBtn">Відкрити</button>
         <button class="btn primary" id="completePositionBtn" disabled>Виконано ✓</button>
