@@ -879,6 +879,16 @@ const pairStorage={
     }catch{return RANDOM_LEVELS.map(x=>x.id)}
   }
   function saveSelectedRandomLevels(ids){pairStorage.setItem(RANDOM_LEVELS_KEY,JSON.stringify(ids));}
+  function applyRandomPoseLevels(ids,{sync=false}={}){
+    const clean=(Array.isArray(ids)?ids:[]).filter(id=>RANDOM_LEVELS.some(x=>x.id===id));
+    const finalIds=clean.length?clean:RANDOM_LEVELS.map(x=>x.id);
+    saveSelectedRandomLevels(finalIds);
+    renderRandomLevelFilter();
+    const pool=getRandomPosePool();
+    if(pool.length&&!pool.includes(randomPoseCurrent))setRandomPose(pool[0]);
+    if(randomPoseResultBox)randomPoseResultBox.hidden=true;
+    if(sync)window.SessionSync?.sendUI?.('game-action',{action:'random-pose-levels',ids:finalIds});
+  }
   function getRandomPosePool(){
     const selected=new Set(getSelectedRandomLevels());
     return RANDOM_POSITIONS.filter(item=>RANDOM_LEVELS.some(level=>selected.has(level.id)&&Number(item.order_index)>=level.from&&Number(item.order_index)<=level.to));
@@ -890,9 +900,7 @@ const pairStorage={
     fortuneLevelOptions.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
       let ids=[...fortuneLevelOptions.querySelectorAll('input:checked')].map(x=>x.value);
       if(!ids.length){ input.checked=true; ids=[input.value]; }
-      saveSelectedRandomLevels(ids); updateRandomLevelSummary();
-      const pool=getRandomPosePool(); if(pool.length && !pool.includes(randomPoseCurrent)) setRandomPose(pool[0]);
-      if(randomPoseResultBox)randomPoseResultBox.hidden=true;
+      applyRandomPoseLevels(ids,{sync:true});
     }));
     updateRandomLevelSummary();
   }
@@ -901,7 +909,7 @@ const pairStorage={
     const ids=getSelectedRandomLevels(); const names=RANDOM_LEVELS.filter(x=>ids.includes(x.id)).map(x=>x.name); const count=getRandomPosePool().length;
     fortuneLevelSummary.textContent=`Обрано: ${names.join(', ')} · ${count} поз`;
   }
-  $('#fortuneSelectAllLevelsBtn')?.addEventListener('click',()=>{saveSelectedRandomLevels(RANDOM_LEVELS.map(x=>x.id));renderRandomLevelFilter();if(randomPoseResultBox)randomPoseResultBox.hidden=true;});
+  $('#fortuneSelectAllLevelsBtn')?.addEventListener('click',()=>applyRandomPoseLevels(RANDOM_LEVELS.map(x=>x.id),{sync:true}));
   const poseImageCache=new Map();
   function preloadPoseImage(item){
     if(!item?.image)return Promise.resolve();
@@ -929,21 +937,46 @@ const pairStorage={
     if(randomPoseCaption) randomPoseCaption.textContent=item.poseTitle || ('Поза ' + item.order_index);
   }
   function resetRandomPosePreview(){ const pool=getRandomPosePool(); if(randomPoseResultBox)randomPoseResultBox.hidden=true; setRandomPose(pool.includes(randomPoseCurrent)?randomPoseCurrent:(pool[0]||RANDOM_POSITIONS[0])); }
-  async function runRandomPoseSpin(forcedOrder=null,remote=false){
+  const randomSpinPending=new Map();
+  const waitUntil=async ts=>{const ms=Number(ts||0)-Date.now();if(ms>2)await new Promise(r=>setTimeout(r,ms));};
+  function setRandomSpinButtonBusy(busy){const button=$('#randomPoseSpinBtn');if(button)button.disabled=!!busy;}
+  async function runRandomPoseSpin(forcedOrder=null,remote=false,startAt=null,forcedTurn=null){
     const pool=getRandomPosePool();if(randomPoseBusy||!pool.length)return;
     const button=$('#randomPoseSpinBtn');randomPoseBusy=true;if(button)button.disabled=true;if(randomPoseResultBox)randomPoseResultBox.hidden=true;
     try{
       await preloadPosePool(pool);
+      if(startAt)await waitUntil(startAt);
       const target=(forcedOrder?pool.find(x=>Number(x.order_index)===Number(forcedOrder)):null)||pool[Math.floor(Math.random()*pool.length)];
-      if(!remote)window.SessionSync?.sendUI?.('game-action',{action:'random-pose-spin',order:target.order_index});
-      fortuneTurns+=5+Math.floor(Math.random()*3);
-      if(fortuneWheelRotor){fortuneWheelRotor.style.transition='transform 3.15s cubic-bezier(.08,.72,.08,1)';fortuneWheelRotor.style.transform=`rotate(${fortuneTurns*360 + Math.floor(Math.random()*340)}deg)`;}
-      const frames=[...pool].sort(()=>Math.random()-.5);let frameIndex=0;const start=performance.now(),duration=3050;
+      const turn=Number.isFinite(Number(forcedTurn))?Number(forcedTurn):(5+Math.floor(Math.random()*3));
+      fortuneTurns+=turn;
+      if(fortuneWheelRotor){fortuneWheelRotor.style.transition='transform 3.15s cubic-bezier(.08,.72,.08,1)';fortuneWheelRotor.style.transform=`rotate(${fortuneTurns*360 + (Number(target.order_index)*37)%340}deg)`;}
+      // Deterministic frame order: both devices see the same sequence.
+      const targetIndex=Math.max(0,pool.findIndex(x=>x.id===target.id));
+      const frames=pool.map((_,i)=>pool[(targetIndex+i*17)%pool.length]);let frameIndex=0;const start=performance.now(),duration=3050;
       await new Promise(resolve=>{const tick=now=>{const t=Math.min(1,(now-start)/duration),delay=55+Math.floor(210*t*t);setRandomPose(frames[frameIndex++%frames.length]);if(t>=1){resolve();return}setTimeout(()=>requestAnimationFrame(tick),delay)};requestAnimationFrame(tick)});
       setRandomPose(target);if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${target.order_index}`;if(randomPoseResult)randomPoseResult.textContent=target.poseTitle||(`Поза ${target.order_index}`);if(randomPoseDescription)randomPoseDescription.textContent=target.poseDescription||'';if(randomPoseResultBox)randomPoseResultBox.hidden=false;
     }finally{randomPoseBusy=false;if(button)button.disabled=false}
   }
-  $('#randomPoseSpinBtn')?.addEventListener('click',()=>runRandomPoseSpin());
+  async function beginSyncedRandomPoseSpin(){
+    const pool=getRandomPosePool();if(randomPoseBusy||!pool.length)return;
+    // Offline/local mode does not need a handshake.
+    if(!window.SessionSync?.connected){await runRandomPoseSpin();return;}
+    setRandomSpinButtonBusy(true);
+    await preloadPosePool(pool);
+    const ids=getSelectedRandomLevels();
+    const target=pool[Math.floor(Math.random()*pool.length)];
+    const spinId='rp_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
+    const turn=5+Math.floor(Math.random()*3);
+    randomSpinPending.set(spinId,{role:'initiator',target:target.order_index,turn,ids,started:false});
+    window.SessionSync.sendUI('game-action',{action:'random-pose-prepare',spinId,ids,order:target.order_index,turn});
+    // Safety fallback if the remote side disappears during the handshake.
+    setTimeout(()=>{
+      const p=randomSpinPending.get(spinId);if(!p||p.started)return;
+      p.started=true;const startAt=Date.now()+250;
+      runRandomPoseSpin(p.target,false,startAt,p.turn).finally(()=>{randomSpinPending.delete(spinId);setRandomSpinButtonBusy(false)});
+    },3500);
+  }
+  $('#randomPoseSpinBtn')?.addEventListener('click',()=>beginSyncedRandomPoseSpin());
   $('#randomPoseOpenBtn')?.addEventListener('click',()=>{
     if(!randomPoseCurrent)return;
     const dlg=document.createElement('dialog'); dlg.className='dialog random-pose-zoom-dialog';
@@ -1013,7 +1046,33 @@ const pairStorage={
       if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue},true);}
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
       if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body},true);}
-      if(a==='random-pose-spin'){openGame('randomPose',false);runRandomPoseSpin(m.payload.order,true);}
+      if(a==='random-pose-levels'){
+        openGame('randomPose',false);applyRandomPoseLevels(m.payload.ids||[],{sync:false});
+      }
+      if(a==='random-pose-prepare'){
+        openGame('randomPose',false);
+        applyRandomPoseLevels(m.payload.ids||[],{sync:false});
+        const spinId=m.payload.spinId;
+        const pool=getRandomPosePool();
+        randomSpinPending.set(spinId,{role:'receiver',target:m.payload.order,turn:m.payload.turn,ids:m.payload.ids||[],started:false});
+        setRandomSpinButtonBusy(true);
+        preloadPosePool(pool).then(()=>window.SessionSync?.sendUI?.('game-action',{action:'random-pose-ready',spinId}));
+      }
+      if(a==='random-pose-ready'){
+        const p=randomSpinPending.get(m.payload.spinId);
+        if(p&&p.role==='initiator'&&!p.started){
+          p.started=true;
+          const startAt=Date.now()+700;
+          window.SessionSync?.sendUI?.('game-action',{action:'random-pose-start',spinId:m.payload.spinId,startAt,order:p.target,turn:p.turn,ids:p.ids});
+          runRandomPoseSpin(p.target,false,startAt,p.turn).finally(()=>{randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false)});
+        }
+      }
+      if(a==='random-pose-start'){
+        openGame('randomPose',false);
+        applyRandomPoseLevels(m.payload.ids||[],{sync:false});
+        const p=randomSpinPending.get(m.payload.spinId)||{};p.started=true;randomSpinPending.set(m.payload.spinId,p);
+        runRandomPoseSpin(m.payload.order,true,m.payload.startAt,m.payload.turn).finally(()=>{randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false)});
+      }
     }
   });
   if(PairDB.active) refreshPairUI();
