@@ -502,6 +502,17 @@ const pairStorage={
   'use strict';
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
+  // Local toast helper for the games module. The calendar module has its own
+  // scoped toast() function, while the global `toast` name may resolve to the
+  // #toast DOM element in browsers.
+  function toast(msg){
+    const el=document.getElementById('toast');
+    if(!el)return;
+    el.textContent=String(msg??'');
+    el.classList.add('show');
+    clearTimeout(toast.t);
+    toast.t=setTimeout(()=>el.classList.remove('show'),1800);
+  }
   const calendarTabBtn=$('#calendarTabBtn'), placesTabBtn=$('#placesTabBtn'), gamesTabBtn=$('#gamesTabBtn'), progressTabBtn=$('#progressTabBtn'), calendarSection=$('#calendarSection'), placesSection=$('#placesSection'), gamesSection=$('#gamesSection'), progressSection=$('#progressSection');
   if(!gamesSection) return;
 

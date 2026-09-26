@@ -161,14 +161,6 @@
       <header class="hero games-hero">
         <div>
           <div class="eyebrow">COUPLE GAMES · 18+</div>
-          <div class="games-score-top" id="gamesScoreTop">
-            <div class="games-score-side"><small>Ви</small><strong id="player1Score">0</strong><span>балів</span></div>
-            <div class="games-score-center">
-              <button id="finishScoreBtn" class="btn primary compact" type="button">Підвести результат</button>
-              <button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button>
-            </div>
-            <div class="games-score-side"><small>Ваш партнер</small><strong id="player2Score">0</strong><span>балів</span></div>
-          </div>
           <h1>Ігри для двох</h1>
           <p class="subtitle">Оберіть гру. Після вибору відкривається тільки її екран.</p>
         </div>
@@ -229,12 +221,15 @@
             <strong id="selfPlayerName">—</strong>
             <span id="selfPlayerGender">—</span>
           </div>
+          <div class="score-card"><span id="player1Score">0</span><small>ваші бали</small></div>
           <div class="turn-box"><small>Хід</small><strong id="currentPlayerName">—</strong><em id="currentTargetName">—</em></div>
+          <div class="score-card"><span id="player2Score">0</span><small>бали партнера</small></div>
           <div class="relative-player-card partner-player-card">
             <small>Ваш партнер</small>
             <strong id="partnerPlayerName">—</strong>
             <span id="partnerPlayerGender">—</span>
           </div>
+          <div class="score-actions"><button id="finishScoreBtn" class="btn primary compact" type="button">Підвести результат</button><button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button></div>
         </section>
 
         <details id="rouletteCustomPanel" class="custom-options-card" hidden>
@@ -477,6 +472,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js?v=27"></script>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="app.js?v=48"></script>
+  <script src="app.js?v=49"></script>
 </body>
 </html>
