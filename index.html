@@ -43,14 +43,16 @@
         <div class="session-role-grid">
           <label>При створенні я граю за
             <select id="createSessionRole">
+              <option value="" selected disabled>Оберіть гравця…</option>
               <option value="0">Гравець 1</option>
               <option value="1">Гравець 2</option>
             </select>
           </label>
           <label>При підключенні я граю за
             <select id="joinSessionRole">
-              <option value="1">Гравець 2</option>
+              <option value="" selected disabled>Оберіть гравця…</option>
               <option value="0">Гравець 1</option>
+              <option value="1">Гравець 2</option>
             </select>
           </label>
         </div>
@@ -77,7 +79,7 @@
   </div>
 
   <main class="app-shell" id="appShell" hidden>
-    <div class="pair-bar"><div><small>Активна пара</small><strong id="activePairLabel">—</strong></div><div class="pair-bar-actions"><button id="openSessionBtn" class="btn secondary compact-btn" type="button">Сесія</button><button id="switchPairBtn" class="btn secondary compact-btn" type="button">Змінити пару</button></div></div>
+    <div class="pair-bar"><div><small>Активна пара</small><strong id="activePairLabel">—</strong><span id="activeSessionRole" class="active-session-role" hidden></span></div><div class="pair-bar-actions"><button id="openSessionBtn" class="btn secondary compact-btn" type="button">Сесія</button><button id="switchPairBtn" class="btn secondary compact-btn" type="button">Змінити пару</button></div></div>
     <nav class="main-tabs" aria-label="Розділи">
       <button class="main-tab active" id="calendarTabBtn" type="button">Календар поз</button>
       <button class="main-tab" id="placesTabBtn" type="button">Познач місця</button>
