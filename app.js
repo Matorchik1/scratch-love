@@ -497,6 +497,7 @@ const pairStorage={
         PLACES_KEY='sa_games_places_v2',
         CUSTOM_ACTIONS_KEY='sa_games_custom_actions_v1',
         CUSTOM_BODY_KEY='sa_games_custom_body_v1',
+        HEAT_KEY='sa_games_heat_v1',
         CUSTOM_PLACES_KEY='sa_places_custom_v1';
 
   // Місця витягнуті з string-resources наданого APK Scratch Adventure.
@@ -517,6 +518,39 @@ const pairStorage={
     {label:'Вагіна',gender:'female'}
   ];
 
+
+  const BODY_HEAT={
+    light:new Set(['Рука','Спина','Живіт','Щоки','Вухо','Стопи','Палець','Коліна','Нога','Пупок','Ніс','Пальці ніг']),
+    warm:new Set(['Сідниці','Груди','Пах','Губи','Шия','Соски','Стегно']),
+    intimate:new Set(['Яєчка','Клітор','Статеві губи','Пеніс','Промежина','Вагіна'])
+  };
+  const getHeat=()=>Math.min(4,Math.max(1,Number(pairStorage.getItem(HEAT_KEY)||2)||2));
+  const setHeat=(value,{sync=true}={})=>{
+    const heat=Math.min(4,Math.max(1,Number(value)||2));
+    pairStorage.setItem(HEAT_KEY,String(heat));
+    renderHeatControls();
+    refreshBodyPools();
+    PairDB.save?.();
+    if(sync&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'heat-change',heat});
+  };
+  function renderHeatControls(){
+    const heat=getHeat();
+    $$('[data-heat-control] .heat-btn').forEach(btn=>{
+      const active=Number(btn.dataset.heat)===heat;
+      btn.classList.toggle('active',active);
+      btn.setAttribute('aria-pressed',active?'true':'false');
+    });
+  }
+  function heatFilteredBody(items){
+    const heat=getHeat();
+    if(heat<=1)return items;
+    const isCustom=x=>String(x.id||'').startsWith('cb_')||String(x.id||'').startsWith('custom_');
+    const customAllowed=x=>!isCustom(x) || Math.min(4,Math.max(1,Number(x.heat)||1))>=heat;
+    if(heat===2)return items.filter(x=>customAllowed(x) && (isCustom(x) || !['Рука','Щоки','Ніс','Палець','Стопи','Коліна','Пальці ніг'].includes(x.label)));
+    if(heat===3)return items.filter(x=>customAllowed(x) && (isCustom(x) || BODY_HEAT.warm.has(x.label)||BODY_HEAT.intimate.has(x.label)||['Шия','Губи'].includes(x.label)));
+    return items.filter(x=>customAllowed(x) && (isCustom(x) || BODY_HEAT.intimate.has(x.label)||['Сідниці','Груди','Пах','Соски'].includes(x.label)));
+  }
+
   const gamesMenu=$('#gamesMenu'), gameDetail=$('#gameDetail'), backToGames=$('#backToGamesBtn'), activeGameTitle=$('#activeGameTitle');
   const playersPanel=$('#playersPanel');
   const gameViews={passion:$('#passionGameView'),direct:$('#directGameView'),randomPose:$('#randomPoseGameView'),secretWish:$('#secretWishGameView'),scenarioWheel:$('#scenarioWheelGameView'),fiveMinutes:$('#fiveMinutesGameView'),blindChoice:$('#blindChoiceGameView'),wishBattle:$('#wishBattleGameView'),eveningQuest:$('#eveningQuestGameView')};
@@ -535,7 +569,7 @@ const pairStorage={
 
   const safeParse=(k,f)=>{try{return JSON.parse(pairStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
   const getCustomActions=()=>safeParse(CUSTOM_ACTIONS_KEY,[]).filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim());
-  const getCustomBody=()=>safeParse(CUSTOM_BODY_KEY,[]).filter(x=>x&&typeof x.label==='string').map(x=>({id:x.id||('cb_'+Math.random().toString(36).slice(2)),label:x.label.trim(),gender:['male','female','any'].includes(x.gender)?x.gender:'any'}));
+  const getCustomBody=()=>safeParse(CUSTOM_BODY_KEY,[]).filter(x=>x&&typeof x.label==='string').map(x=>({id:x.id||('cb_'+Math.random().toString(36).slice(2)),label:x.label.trim(),gender:['male','female','any'].includes(x.gender)?x.gender:'any',heat:Math.min(4,Math.max(1,Number(x.heat)||1))}));
   const actionPool=()=>[...PASSION_ACTIONS,...getCustomActions()];
   const saveCustomActions=items=>pairStorage.setItem(CUSTOM_ACTIONS_KEY,JSON.stringify(items));
   const saveCustomBody=items=>pairStorage.setItem(CUSTOM_BODY_KEY,JSON.stringify(items));
@@ -579,6 +613,8 @@ const pairStorage={
     if(currentTarget) currentTarget.textContent=`→ ${participantLabel(target,true)}`;
     refreshBodyPools();
     updateRelativeGameLabels();
+    renderHeatControls();
+    refreshRollPermissions();
   }
   $('#resetScoreBtn')?.addEventListener('click',()=>{setScore([0,0]);setTurn(0);syncPlayers()});
   document.addEventListener('pair:changed',()=>syncPlayers());
@@ -598,6 +634,24 @@ const pairStorage={
     const sf1=$('#secretWishP1Form'),sf2=$('#secretWishP2Form');
     if(sf1)sf1.classList.toggle('private-locked',self!==0);if(sf2)sf2.classList.toggle('private-locked',self!==1);
   }
+
+  function currentLocalTurnAllowed(){
+    if(!window.SessionSync?.connected)return true;
+    const role=window.SessionSync?.role;
+    return (role===0||role===1) && Number(role)===getTurn();
+  }
+  function refreshRollPermissions(){
+    const allowed=currentLocalTurnAllowed();
+    const pendingPassion=currentPendingFor?.('passion');
+    const pendingDirect=currentPendingFor?.('direct');
+    const pb=$('#passionRollBtn'), db=$('#directRollBtn');
+    if(pb){pb.disabled=rolling||!allowed||!!pendingPassion;pb.textContent=!allowed?'Хід партнера':pendingPassion?'Оцініть результат':'Кинути';}
+    if(db){db.disabled=rolling||!allowed||!!pendingDirect;db.textContent=!allowed?'Хід партнера':pendingDirect?'Оцініть результат':'Кинути';}
+    $$('#directActionChoice .choice-btn').forEach(btn=>{btn.disabled=window.SessionSync?.connected&&!allowed;});
+  }
+  $$('[data-heat-control] .heat-btn').forEach(btn=>btn.addEventListener('click',()=>setHeat(btn.dataset.heat,{sync:true})));
+  renderHeatControls();
+
   document.addEventListener('session:role-changed',()=>syncPlayers());
 
   function showTab(which, syncSession=true){
@@ -932,12 +986,14 @@ const pairStorage={
 
   const bodyPoolForTarget=()=>{
     const turn=getTurn(), target=(turn+1)%2, gender=getGenders()[target];
-    return [...BODY_PARTS,...getCustomBody()].filter(x=>x.gender==='any'||x.gender===gender).map(x=>x.label);
+    const genderPool=[...BODY_PARTS,...getCustomBody()].filter(x=>x.gender==='any'||x.gender===gender);
+    const filtered=heatFilteredBody(genderPool);
+    return (filtered.length?filtered:genderPool).map(x=>x.label);
   };
 
   const passionActionSlot=new SyncedPassionReel($('#passionActionReel'),actionPool());
   const passionBodySlot=new SyncedPassionReel($('#passionBodyReel'),bodyPoolForTarget());
-  const directBodySlot=new SlotReel($('#directBodyReel'),bodyPoolForTarget());
+  const directBodySlot=new SyncedPassionReel($('#directBodyReel'),bodyPoolForTarget());
   let pendingGame=null, rolling=false, directAction='Стиснути';
   let lastRollCompletedAt=0;
   let activeRollId=null;
@@ -964,9 +1020,10 @@ const pairStorage={
     if(bodyList){
       bodyList.innerHTML='';
       const genders={any:'для всіх',male:'для чоловіка',female:'для жінки'};
+      const heats={1:'Ніжно',2:'Тепло',3:'Гаряче',4:'Максимум'};
       getCustomBody().forEach((item,index)=>{
         const chip=document.createElement('span'); chip.className='custom-chip';
-        const txt=document.createElement('span'); txt.textContent=`${item.label} · ${genders[item.gender]}`;
+        const txt=document.createElement('span'); txt.textContent=`${item.label} · ${genders[item.gender]} · ${heats[item.heat]||heats[1]}`;
         const rm=document.createElement('button'); rm.type='button'; rm.textContent='×'; rm.title='Видалити';
         rm.onclick=()=>{const arr=getCustomBody();arr.splice(index,1);saveCustomBody(arr);renderCustomOptions();refreshBodyPools()};
         chip.append(txt,rm); bodyList.appendChild(chip);
@@ -980,8 +1037,14 @@ const pairStorage={
     saveCustomActions(arr); if(input)input.value=''; renderCustomOptions(); refreshBodyPools();
   });
   $('#customBodyForm')?.addEventListener('submit',e=>{
-    e.preventDefault(); const input=$('#customBodyInput'), gender=$('#customBodyGender'); const value=input?.value.trim(); if(!value)return;
-    const arr=getCustomBody(); if(!arr.some(x=>x.label.toLocaleLowerCase('uk')===value.toLocaleLowerCase('uk')&&x.gender===gender?.value)) arr.push({id:'custom_'+Date.now(),label:value,gender:gender?.value||'any'});
+    e.preventDefault();
+    const input=$('#customBodyInput'), gender=$('#customBodyGender'), heat=$('#customBodyHeat');
+    const value=input?.value.trim(); if(!value)return;
+    const heatValue=Math.min(4,Math.max(1,Number(heat?.value)||1));
+    const arr=getCustomBody();
+    if(!arr.some(x=>x.label.toLocaleLowerCase('uk')===value.toLocaleLowerCase('uk')&&x.gender===gender?.value&&Number(x.heat||1)===heatValue)){
+      arr.push({id:'cb_'+Date.now(),label:value,gender:gender?.value||'any',heat:heatValue});
+    }
     saveCustomBody(arr); if(input)input.value=''; renderCustomOptions(); refreshBodyPools();
   });
 
@@ -1178,6 +1241,8 @@ const pairStorage={
   const pbox=$('#passionResultBox');
   async function runPassionRoll(forced=null,remote=false){
     if(rolling)return;
+    if(!remote&&!currentLocalTurnAllowed()){toast('Зараз хід партнера');refreshRollPermissions();return;}
+    if(!remote&&currentPendingFor('passion')){toast('Спочатку оцініть попередній результат');refreshRollPermissions();return;}
     const button=$('#passionRollBtn'); rolling=true; if(button)button.disabled=true;if(pbox)pbox.hidden=true;refreshBodyPools();
     const rollId=forced?.rollId||('passion_'+Date.now()+'_'+Math.random().toString(36).slice(2,7));
     activeRollId=rollId;
@@ -1190,7 +1255,7 @@ const pairStorage={
       // One absolute start moment gives both peers the same visible beginning.
       // A generous lead time absorbs ordinary WebRTC latency.
       const startAt=Number(forced?.startAt)|| (window.SessionSync?.connected?Date.now()+1000:Date.now());
-      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,startAt,seed,rollId});
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,startAt,seed,rollId,heat:getHeat()});
       await waitUntil(startAt,0);
       const [finalAction,finalBody]=await Promise.all([
         passionActionSlot.spinTo(action,{seed:seed^0x13579bdf,steps:40}),
@@ -1200,34 +1265,45 @@ const pairStorage={
       // These are exactly the centre values left visible by the reels. No second
       // random source and no post-animation replacement.
       showResult('passion',`${finalAction} — ${finalBody}`,$('#passionTurnLabel'),$('#passionResult'),pbox,turn,'result_'+rollId);
-    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;if(button)button.disabled=false}
+    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;refreshRollPermissions()}
   }
   $('#passionRollBtn')?.addEventListener('click',()=>runPassionRoll());
   $('#passionDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(true)});
   $('#passionNoBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(false)});
 
   $$('#directActionChoice .choice-btn').forEach(btn=>btn.addEventListener('click',()=>{
+    if(window.SessionSync?.connected&&!currentLocalTurnAllowed()){toast('Зараз хід партнера');return;}
     $$('#directActionChoice .choice-btn').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); directAction=btn.dataset.action;
     window.SessionSync?.replyUI?.('game-action',{action:'direct-choice',directAction});
   }));
   const dbox=$('#directResultBox');
   async function runDirectRoll(forced=null,remote=false){
-    if(rolling)return;const button=$('#directRollBtn');rolling=true;if(button)button.disabled=true;if(dbox)dbox.hidden=true;refreshBodyPools();
+    if(rolling)return;
+    if(!remote&&!currentLocalTurnAllowed()){toast('Зараз хід партнера');refreshRollPermissions();return;}
+    if(!remote&&currentPendingFor('direct')){toast('Спочатку оцініть попередній результат');refreshRollPermissions();return;}
+    const button=$('#directRollBtn');
+    rolling=true;
+    if(button)button.disabled=true;
+    if(dbox)dbox.hidden=true;
+    refreshBodyPools();
     const rollId=forced?.rollId||('direct_'+Date.now()+'_'+Math.random().toString(36).slice(2,7));
     activeRollId=rollId;
     try{
       if(forced?.directAction) directAction=forced.directAction;
       document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));
-      const bp=bodyPoolForTarget();const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
+      const bp=bodyPoolForTarget();
+      const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
       const turn=(forced?.turn===0||forced?.turn===1)?forced.turn:getTurn();
-      const delayMs=Number(forced?.delayMs)|| (window.SessionSync?.connected?550:0);
-      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'direct-roll',directAction,body,turn,delayMs,rollId});
-      if(delayMs)await waitUntil(null,delayMs);
-      await directBodySlot.spinTo(body);
+      const seed=Number(forced?.seed)||Math.floor(Math.random()*0x7fffffff)||1;
+      const startAt=Number(forced?.startAt)|| (window.SessionSync?.connected?Date.now()+1000:Date.now());
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{
+        action:'direct-roll',directAction,body,turn,startAt,seed,rollId,heat:getHeat()
+      });
+      await waitUntil(startAt,0);
+      const finalBody=await directBodySlot.spinTo(body,{seed:seed^0x55aa33cc,steps:38});
       if(activeRollId!==rollId)return;
-      const visibleBody=directBodySlot.currentValue()||body;
-      showResult('direct',`${directAction} — ${visibleBody}`,$('#directTurnLabel'),$('#directResult'),dbox,turn,'result_'+rollId);
-    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;if(button)button.disabled=false}
+      showResult('direct',`${directAction} — ${finalBody}`,$('#directTurnLabel'),$('#directResult'),dbox,turn,'result_'+rollId);
+    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;refreshRollPermissions()}
   }
   $('#directRollBtn')?.addEventListener('click',()=>runDirectRoll());
   $('#directDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(true)});
@@ -1256,9 +1332,10 @@ const pairStorage={
     if(m.kind==='game-menu') showGamesMenu(false,true);
     if(m.kind==='game-action'){
       const a=m.payload?.action;
-      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
+      if(a==='passion-roll'){if(m.payload.heat)setHeat(m.payload.heat,{sync:false});openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
+      if(a==='heat-change'){setHeat(m.payload.heat,{sync:false});}
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
-      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,delayMs:m.payload.delayMs,rollId:m.payload.rollId},true);}
+      if(a==='direct-roll'){if(m.payload.heat)setHeat(m.payload.heat,{sync:false});openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
       if(a==='score-resolve'){resolveResult(!!m.payload.completed,false,{gameKey:m.payload.gameKey,turn:m.payload.turn,score:m.payload.score,nextTurn:m.payload.nextTurn});}
       if(a==='random-pose-levels'){
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
