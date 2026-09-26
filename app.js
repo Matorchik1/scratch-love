@@ -522,6 +522,7 @@ const pairStorage={
         TURN_KEY='sa_games_turn_v1',
         PENDING_GAME_KEY='sa_games_pending_result_v1',
         PLACES_KEY='sa_games_places_v2',
+        PLACES_PLANNED_KEY='sa_games_places_planned_v1',
         CUSTOM_ACTIONS_KEY='sa_games_custom_actions_v1',
         CUSTOM_BODY_KEY='sa_games_custom_body_v1',
         HEAT_KEY='sa_games_heat_v1',
@@ -818,7 +819,7 @@ const pairStorage={
   progressTabBtn?.addEventListener('click',()=>showTab('progress'));
 
   const PAGE_DONE_KEY='sa_position_done_mf', PAGE_DEFERRED_KEY='sa_position_deferred_mf_v1', PAGE_HISTORY_KEY='sa_position_history_mf_v1';
-  const pagePoseOverview=$('#pagePoseOverview'), pagePoseLevels=$('#pagePoseLevels'), pagePlacesOverview=$('#pagePlacesOverview'), pagePlacesCategories=$('#pagePlacesCategories'), pageProgressMonths=$('#pageProgressMonths'), pageDeferredList=$('#pageDeferredList'), pageDeferredCount=$('#pageDeferredCount'), pageGameDebtList=$('#pageGameDebtList'), pageGameDebtCount=$('#pageGameDebtCount');
+  const pagePoseOverview=$('#pagePoseOverview'), pagePoseLevels=$('#pagePoseLevels'), pagePlacesOverview=$('#pagePlacesOverview'), pagePlacesCategories=$('#pagePlacesCategories'), pageProgressMonths=$('#pageProgressMonths'), pageDeferredList=$('#pageDeferredList'), pageDeferredCount=$('#pageDeferredCount'), pageGameDebtList=$('#pageGameDebtList'), pageGameDebtCount=$('#pageGameDebtCount'), pagePurchaseStatusList=$('#pagePurchaseStatusList'), pagePurchaseStatusCount=$('#pagePurchaseStatusCount'), pagePlannedPlacesList=$('#pagePlannedPlacesList'), pagePlannedPlacesCount=$('#pagePlannedPlacesCount');
   const POSE_LEVELS=[['Легкий',1,46],['Середній',47,105],['Важкий',106,158],['Складний',159,210],['У ванній',211,254],['У машині',255,294],['Акробатичний',295,312]];
   function pageJSON(key,fallback){try{return JSON.parse(pairStorage.getItem(key)||JSON.stringify(fallback))}catch{return fallback}}
   function renderProgressPage(){
@@ -829,11 +830,26 @@ const pairStorage={
     const posePct=positions.length?Math.round(passed.size/positions.length*100):0;
     if(pagePoseOverview)pagePoseOverview.innerHTML=`<div class="progress-stat"><strong>${passed.size}/${positions.length}</strong><span>зараховано</span></div><div class="progress-stat"><strong>${done.size}</strong><span>виконано</span></div><div class="progress-stat deferred-stat"><strong>${Object.keys(deferred).length}</strong><span>відкладено</span></div><div class="progress-stat"><strong>${posePct}%</strong><span>поз</span></div>`;
     if(pagePoseLevels){pagePoseLevels.innerHTML='';POSE_LEVELS.forEach(([name,from,to])=>{const total=to-from+1,count=positions.filter(x=>x.order_index>=from&&x.order_index<=to&&passed.has(Number(x.id))).length,pct=Math.round(count/total*100);const row=document.createElement('div');row.className='progress-level-row';row.innerHTML=`<div><strong>${name}</strong><span>${count}/${total}</span></div><div class="mini-progress"><span style="width:${pct}%"></span></div><b>${pct}%</b>`;pagePoseLevels.appendChild(row)})}
-    const marked=new Set(pageJSON(PLACES_KEY,[])); const custom=getCustomPlaces(); const cats=PLACE_CATEGORIES.map(c=>({name:c.name,items:[...c.items]})); custom.forEach(x=>{let c=cats.find(y=>y.name===x.category);if(!c){c={name:x.category||'Мої місця',items:[]};cats.push(c)}c.items.push(x)}); const placeTotal=cats.reduce((s,c)=>s+c.items.length,0), placeDone=[...marked].filter(id=>cats.some(c=>c.items.some(x=>x.id===id))).length, placePct=placeTotal?Math.round(placeDone/placeTotal*100):0;
-    if(pagePlacesOverview)pagePlacesOverview.innerHTML=`<div class="progress-stat"><strong>${placeDone}/${placeTotal}</strong><span>відзначено</span></div><div class="progress-stat"><strong>${placePct}%</strong><span>місць</span></div><div class="progress-stat"><strong>${custom.length}</strong><span>власних</span></div>`;
+    const marked=new Set(pageJSON(PLACES_KEY,[])); const plannedPlaces=new Set(pageJSON(PLACES_PLANNED_KEY,[])); const custom=getCustomPlaces(); const cats=PLACE_CATEGORIES.map(c=>({name:c.name,items:[...c.items]})); custom.forEach(x=>{let c=cats.find(y=>y.name===x.category);if(!c){c={name:x.category||'Мої місця',items:[]};cats.push(c)}c.items.push(x)}); const placeTotal=cats.reduce((s,c)=>s+c.items.length,0), placeDone=[...marked].filter(id=>cats.some(c=>c.items.some(x=>x.id===id))).length, placePlanned=[...plannedPlaces].filter(id=>!marked.has(id)&&cats.some(c=>c.items.some(x=>x.id===id))).length, placePct=placeTotal?Math.round(placeDone/placeTotal*100):0;
+    if(pagePlacesOverview)pagePlacesOverview.innerHTML=`<div class="progress-stat"><strong>${placeDone}/${placeTotal}</strong><span>відзначено</span></div><div class="progress-stat"><strong>${placePlanned}</strong><span>заплановано</span></div><div class="progress-stat"><strong>${placePct}%</strong><span>місць</span></div><div class="progress-stat"><strong>${custom.length}</strong><span>власних</span></div>`;
     if(pagePlacesCategories){pagePlacesCategories.innerHTML='';cats.filter(c=>c.items.length).forEach(c=>{const count=c.items.filter(x=>marked.has(x.id)).length,pct=Math.round(count/c.items.length*100);const row=document.createElement('div');row.className='progress-level-row';row.innerHTML=`<div><strong>${c.name}</strong><span>${count}/${c.items.length}</span></div><div class="mini-progress"><span style="width:${pct}%"></span></div><b>${pct}%</b>`;pagePlacesCategories.appendChild(row)})}
     const history=pageJSON(PAGE_HISTORY_KEY,[]), months=new Map(), fmt=new Intl.DateTimeFormat('uk-UA',{month:'long',year:'numeric'}); history.forEach(ev=>{const d=new Date(ev.date);if(isNaN(d))return;const key=fmt.format(d),m=months.get(key)||{date:d,done:0,deferred:0};if(ev.status==='done')m.done++;if(ev.status==='deferred')m.deferred++;months.set(key,m)}); if(pageProgressMonths){pageProgressMonths.innerHTML='';[...months.entries()].sort((a,b)=>b[1].date-a[1].date).forEach(([label,m])=>{const row=document.createElement('div');row.className='month-row';row.innerHTML=`<strong>${label}</strong><span>Виконано: ${m.done}</span><span>Відкладено: ${m.deferred}</span>`;pageProgressMonths.appendChild(row)});if(!months.size)pageProgressMonths.innerHTML='<p class="empty-state">Поки немає історії проходження.</p>'}
     const list=Object.values(deferred).sort((a,b)=>new Date(b.date)-new Date(a.date)); if(pageDeferredCount)pageDeferredCount.textContent=list.length; if(pageDeferredList){pageDeferredList.innerHTML='';list.forEach(info=>{const item=positions.find(x=>Number(x.id)===Number(info.id));if(!item)return;const card=document.createElement('div');card.className='deferred-progress-card'+(info.wishDone?' wish-done':'');card.innerHTML=`<img src="${item.image}" alt="Поза ${item.order_index}"><div><strong>Поза ${item.order_index} · ${item.poseTitle||''}</strong><span>${info.wishDone?'Бажання виконано ✓':`${info.debtorName} має виконати бажання ${info.partnerName}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;const actions=document.createElement('div');actions.className='deferred-card-actions';if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>{const all=pageJSON(PAGE_DEFERRED_KEY,{});if(all[info.id]){all[info.id].wishDone=true;all[info.id].wishDoneDate=new Date().toISOString();pairStorage.setItem(PAGE_DEFERRED_KEY,JSON.stringify(all))}renderProgressPage();document.dispatchEvent(new CustomEvent('progress:changed'))});actions.appendChild(wish)}card.appendChild(actions);pageDeferredList.appendChild(card)});if(!list.length)pageDeferredList.innerHTML='<p class="empty-state">Відкладених поз немає.</p>'}
+    // Purchases: planned + purchased statistics.
+    const purchaseRows=pageJSON('sa_desired_purchases_v1',[]).filter(x=>x&&typeof x==='object');
+    const purchaseStats=purchaseRows.filter(x=>x.purchased||x.planned).sort((a,b)=>Number(b.purchasedAt||b.plannedAt||b.updatedAt||b.createdAt||0)-Number(a.purchasedAt||a.plannedAt||a.updatedAt||a.createdAt||0));
+    if(pagePurchaseStatusCount)pagePurchaseStatusCount.textContent=purchaseStats.length;
+    if(pagePurchaseStatusList){
+      pagePurchaseStatusList.innerHTML='';
+      purchaseStats.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card purchase-stat-card'+(info.purchased?' is-purchased':' is-planned');const qty=Math.max(1,Number(info.qty)||1),total=(Number(info.price)||0)*qty;card.innerHTML=`<div class="game-debt-icon">${info.purchased?'✓':'🗓️'}</div><div><strong>${info.name||'Без назви'}</strong><span>${info.purchased?'Придбано':'В планах'} · ${new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(total)} гривень</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.purchasedAt||info.plannedAt||info.updatedAt||info.createdAt||Date.now()))}</small></div>`;pagePurchaseStatusList.appendChild(card)});
+      if(!purchaseStats.length)pagePurchaseStatusList.innerHTML='<p class="empty-state">Поки немає придбаних або запланованих покупок.</p>';
+    }
+    // Places planned for later.
+    const allPlaces=cats.flatMap(c=>c.items.map(x=>({...x,category:c.name})));
+    const plannedList=[...plannedPlaces].filter(id=>!marked.has(id)).map(id=>allPlaces.find(x=>x.id===id)).filter(Boolean);
+    if(pagePlannedPlacesCount)pagePlannedPlacesCount.textContent=plannedList.length;
+    if(pagePlannedPlacesList){pagePlannedPlacesList.innerHTML='';plannedList.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card planned-place-card';card.innerHTML=`<div class="game-debt-icon">📍</div><div><strong>${info.label}</strong><span>Заплановано · ${info.category||'Місце'}</span></div>`;pagePlannedPlacesList.appendChild(card)});if(!plannedList.length)pagePlannedPlacesList.innerHTML='<p class="empty-state">Запланованих місць поки немає.</p>'}
+
     const gameDebts=pageJSON(GAME_WISH_DEBTS_KEY,[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
     if(pageGameDebtCount)pageGameDebtCount.textContent=gameDebts.filter(x=>!x.wishDone).length;
     if(pageGameDebtList){pageGameDebtList.innerHTML='';gameDebts.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card game-debt-card'+(info.wishDone?' wish-done':'');const score=Array.isArray(info.score)?`${info.score[0]} : ${info.score[1]}`:'—';card.innerHTML=`<div class="game-debt-icon">🏆</div><div><strong>${info.debtorName||'Гравець'} виконує бажання</strong><span>${info.wishDone?'Бажання виконано ✓':`Для ${info.partnerName||'партнера'} · рахунок ${score}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;const actions=document.createElement('div');actions.className='deferred-card-actions';if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>markGameDebtDone(info.id,true));actions.appendChild(wish)}card.appendChild(actions);pageGameDebtList.appendChild(card)});if(!gameDebts.length)pageGameDebtList.innerHTML='<p class="empty-state">Поки немає бажань за результатами ігор.</p>'}
@@ -908,7 +924,7 @@ const pairStorage={
 
   function renderPlaces(){
     if(!placesBox) return;
-    const done=new Set(safeParse(PLACES_KEY,[])); let total=0;
+    const done=new Set(safeParse(PLACES_KEY,[])); const planned=new Set(safeParse(PLACES_PLANNED_KEY,[])); let total=0;
     const custom=getCustomPlaces();
     const categories=PLACE_CATEGORIES.map(cat=>({name:cat.name,items:cat.items.map(item=>({...item,custom:false}))}));
     custom.forEach(item=>{
@@ -927,21 +943,26 @@ const pairStorage={
         total++;
         const id=item.id;
         const row=document.createElement('div'); row.className='place-item-row';
-        const b=document.createElement('button'); b.type='button'; b.className='place-item'+(done.has(id)?' done':'');
-        b.innerHTML=`<span>${done.has(id)?'✓':'○'}</span>${item.label}`;
+        const b=document.createElement('button'); b.type='button'; b.className='place-item'+(done.has(id)?' done':planned.has(id)?' planned':'');
+        b.innerHTML=`<span>${done.has(id)?'✓':planned.has(id)?'◷':'○'}</span>${item.label}`;
         b.addEventListener('click',()=>{
-          done.has(id)?done.delete(id):done.add(id);
+          if(done.has(id)){done.delete(id)}else{done.add(id);planned.delete(id)}
           pairStorage.setItem(PLACES_KEY,JSON.stringify([...done]));
+          pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));
           renderPlaces();
           if(progressSection&&!progressSection.hidden)renderProgressPage();
         });
         row.appendChild(b);
+        const plan=document.createElement('button'); plan.type='button'; plan.className='place-plan'+(planned.has(id)&&!done.has(id)?' active':''); plan.title=planned.has(id)?'Прибрати із запланованих':'Додати в заплановано'; plan.setAttribute('aria-label',`${planned.has(id)?'Прибрати із запланованих':'Запланувати'} ${item.label}`); plan.textContent=planned.has(id)&&!done.has(id)?'В планах':'Запланувати'; plan.disabled=done.has(id);
+        plan.addEventListener('click',()=>{if(done.has(id))return;planned.has(id)?planned.delete(id):planned.add(id);pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));renderPlaces();if(progressSection&&!progressSection.hidden)renderProgressPage()});
+        row.appendChild(plan);
         if(item.custom){
           const del=document.createElement('button'); del.type='button'; del.className='place-delete'; del.title='Видалити власне місце'; del.setAttribute('aria-label',`Видалити ${item.label}`); del.textContent='×';
           del.addEventListener('click',()=>{
             const next=getCustomPlaces().filter(x=>x.id!==id);
             saveCustomPlaces(next);
             if(done.delete(id)) pairStorage.setItem(PLACES_KEY,JSON.stringify([...done]));
+            if(planned.delete(id)) pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));
             renderPlaceCategorySelect();
             renderPlaces();
           });
@@ -1950,6 +1971,8 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     let shown=all;
     if(filter==='mine')shown=all.filter(x=>Number(x.addedBy)===me);
     if(filter==='partner')shown=all.filter(x=>Number(x.addedBy)===partner);
+    if(filter==='planned')shown=all.filter(x=>!!x.planned&&!x.purchased);
+    if(filter==='purchased')shown=all.filter(x=>!!x.purchased);
     $('#purchaseCountBadge').textContent=shown.length;
     document.querySelectorAll('[data-purchase-filter]').forEach(b=>b.classList.toggle('active',b.dataset.purchaseFilter===filter));
     listEl.innerHTML='';
@@ -1963,16 +1986,20 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       const priority=['low','medium','high','urgent'].includes(item.priority)?item.priority:null;
       const priorityLabels={low:'Низький',medium:'Середній',high:'Високий',urgent:'Дуже високий'};
       const canSetPriority=!isMine;
-      const card=document.createElement('article');card.className='purchase-card'+(myVote==='yes'&&partnerVote==='yes'?' both-want':'')+(priority?` priority-${priority}`:'');
+      const card=document.createElement('article');card.className='purchase-card'+(myVote==='yes'&&partnerVote==='yes'?' both-want':'')+(priority?` priority-${priority}`:'')+(item.purchased?' is-purchased':item.planned?' is-planned':'');
       const img=(item.imageUrl&&validHttp(item.imageUrl))?`<img src="${esc(item.imageUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<div class="purchase-image-placeholder">🛍️</div>';
       const productLink=(item.url&&validHttp(item.url))?`<a class="purchase-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">Відкрити товар ↗</a>`:'';
       card.innerHTML=`
-        <div class="purchase-image">${img}</div>
+        <div class="purchase-image">${img}${item.purchased?'<span class="purchase-bought-overlay">Придбано ✓</span>':''}</div>
         <div class="purchase-card-body">
-          <div class="purchase-card-top"><span class="purchase-owner ${isMine?'mine':'partner'}">${isMine?'Додали ви':`Додав ${esc(ps[addedBy]?.name||'партнер')}`}</span>${myVote==='yes'&&partnerVote==='yes'?'<span class="purchase-approved">Обом потрібен ✓</span>':''}</div>
-          <div class="purchase-title-row"><h3>${esc(item.name||'Без назви')}</h3>${isMine?`<button type="button" class="purchase-edit-btn" data-edit-purchase="${esc(item.id)}">Редагувати</button>`:''}</div>
+          <div class="purchase-card-top"><span class="purchase-owner ${isMine?'mine':'partner'}">${isMine?'Додали ви':`Додав ${esc(ps[addedBy]?.name||'партнер')}`}</span><div class="purchase-card-badges">${myVote==='yes'&&partnerVote==='yes'?'<span class="purchase-approved">Обом потрібен ✓</span>':''}${item.planned&&!item.purchased?'<span class="purchase-plan-badge">В планах</span>':''}${item.purchased?'<span class="purchase-bought-badge">Придбано ✓</span>':''}</div></div>
+          <div class="purchase-title-row"><h3>${esc(item.name||'Без назви')}</h3>${isMine?`<div class="purchase-owner-actions"><button type="button" class="purchase-edit-btn" data-edit-purchase="${esc(item.id)}">Редагувати</button><button type="button" class="purchase-delete-btn" data-delete-purchase="${esc(item.id)}">Видалити</button></div>`:''}</div>
           <div class="purchase-price-row"><strong>${fmt(price)}</strong><span>× ${qty}</span><b>${qty>1?`= ${fmt(itemTotal)}`:''}</b></div>
           ${productLink}
+          <div class="purchase-status-actions" data-purchase-status-id="${esc(item.id)}">
+            <button type="button" class="purchase-plan-btn ${item.planned&&!item.purchased?'active':''}" data-toggle-planned="${item.planned&&!item.purchased?'0':'1'}">${item.planned&&!item.purchased?'Прибрати з планів':'🗓️ В планах'}</button>
+            <button type="button" class="purchase-bought-btn ${item.purchased?'active':''}" data-toggle-purchased="${item.purchased?'0':'1'}">${item.purchased?'Повернути в список':'✓ Придбано'}</button>
+          </div>
           <div class="purchase-priority">
             <div class="purchase-priority-head"><small>Пріоритет покупки</small><strong class="priority-value ${priority||'none'}">${priority?priorityLabels[priority]:'Не визначено'}</strong></div>
             ${canSetPriority?`<div class="purchase-priority-actions" data-purchase-priority-id="${esc(item.id)}">
@@ -2021,6 +2048,37 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       if(item)openEdit(item);
       return;
     }
+    const deleteBtn=e.target.closest('[data-delete-purchase]');
+    if(deleteBtn){
+      if(!requireSession())return;
+      const id=deleteBtn.dataset.deletePurchase,all=rows(),item=all.find(x=>x.id===id);if(!item)return;
+      if(Number(item.addedBy)!==localRole())return;
+      if(!window.confirm('Видалити цей товар зі списку?'))return;
+      save(all.filter(x=>x.id!==id),{event:{action:'delete',id,role:localRole()}});
+      return;
+    }
+    const plannedBtn=e.target.closest('[data-toggle-planned]');
+    if(plannedBtn){
+      if(!requireSession())return;
+      const wrap=plannedBtn.closest('[data-purchase-status-id]'),id=wrap?.dataset.purchaseStatusId;if(!id)return;
+      const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
+      const value=plannedBtn.dataset.togglePlanned==='1';
+      item.planned=value;item.plannedBy=localRole();item.plannedAt=value?Date.now():null;
+      if(value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null;}
+      save(all,{event:{action:'planned',id,role:localRole(),value,updatedAt:Date.now()}});
+      document.dispatchEvent(new CustomEvent('progress:changed'));
+      return;
+    }
+    const purchasedBtn=e.target.closest('[data-toggle-purchased]');
+    if(purchasedBtn){
+      if(!requireSession())return;
+      const wrap=purchasedBtn.closest('[data-purchase-status-id]'),id=wrap?.dataset.purchaseStatusId;if(!id)return;
+      const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
+      const value=purchasedBtn.dataset.togglePurchased==='1';
+      item.purchased=value;item.purchasedBy=localRole();item.purchasedAt=value?Date.now():null;if(value){item.planned=false;item.plannedAt=null;item.plannedBy=null;}
+      save(all,{event:{action:'purchased',id,role:localRole(),value,updatedAt:Date.now()}});document.dispatchEvent(new CustomEvent('progress:changed'));
+      return;
+    }
     const priorityBtn=e.target.closest('[data-priority]');
     if(priorityBtn){
       if(!requireSession())return;
@@ -2055,6 +2113,19 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       item.imageUrl=String(patch.imageUrl??item.imageUrl??'');
       item.updatedAt=Number(patch.updatedAt)||Date.now();
       save(all,{sync:false});return
+    }
+    if(p.action==='delete'){
+      const item=all.find(x=>x.id===p.id);if(!item)return;
+      if(Number(item.addedBy)!==Number(p.role))return;
+      save(all.filter(x=>x.id!==p.id),{sync:false});return
+    }
+    if(p.action==='planned'){
+      const item=all.find(x=>x.id===p.id);if(!item)return;
+      item.planned=!!p.value;item.plannedBy=Number(p.role);item.plannedAt=p.value?(Number(p.updatedAt)||Date.now()):null;if(p.value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null;}save(all,{sync:false});document.dispatchEvent(new CustomEvent('progress:changed'));return
+    }
+    if(p.action==='purchased'){
+      const item=all.find(x=>x.id===p.id);if(!item)return;
+      item.purchased=!!p.value;item.purchasedBy=Number(p.role);item.purchasedAt=p.value?(Number(p.updatedAt)||Date.now()):null;if(p.value){item.planned=false;item.plannedAt=null;item.plannedBy=null;}save(all,{sync:false});document.dispatchEvent(new CustomEvent('progress:changed'));return
     }
     if(p.action==='vote'){
       const item=all.find(x=>x.id===p.id);if(!item)return;item.votes ||= {};item.votes[Number(p.role)]=p.value==='yes'?'yes':'no';save(all,{sync:false});return
@@ -2130,7 +2201,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     // adding an item and voting require a synchronized partner session.
     if(target.closest('#purchasesSection')){
       if(target.closest('.purchase-filter-btn,.purchase-link,#closePurchaseFormBtn'))return false;
-      return !!target.closest('#openPurchaseFormBtn,#purchaseForm input,#purchaseForm button,.purchase-vote-btn,.purchase-priority-btn,.purchase-edit-btn,form');
+      return !!target.closest('#openPurchaseFormBtn,#purchaseForm input,#purchaseForm button,.purchase-vote-btn,.purchase-priority-btn,.purchase-edit-btn,.purchase-delete-btn,.purchase-bought-btn,.purchase-plan-btn,form');
     }
 
     // Position scratch/reveal/defer/complete mutate shared position state; closing remains view-only.

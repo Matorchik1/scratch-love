@@ -182,6 +182,8 @@
           <button class="purchase-filter-btn active" data-purchase-filter="all" type="button">Усі</button>
           <button class="purchase-filter-btn" data-purchase-filter="mine" type="button">Мої</button>
           <button class="purchase-filter-btn" data-purchase-filter="partner" type="button">Партнера</button>
+          <button class="purchase-filter-btn" data-purchase-filter="planned" type="button">В планах</button>
+          <button class="purchase-filter-btn" data-purchase-filter="purchased" type="button">Придбані</button>
         </div>
       </div>
       <div id="purchaseList" class="purchase-grid"></div>
@@ -195,6 +197,8 @@
       </div>
       <article class="game-card"><div class="section-head-row"><h2>По місяцях</h2></div><div id="pageProgressMonths" class="progress-months"></div></article>
       <article class="game-card"><div class="section-head-row"><h2>Відкладені пози та бажання</h2><span id="pageDeferredCount" class="count-badge">0</span></div><div id="pageDeferredList" class="progress-deferred"></div></article>
+      <article class="game-card"><div class="section-head-row"><h2>Покупки</h2><span id="pagePurchaseStatusCount" class="count-badge">0</span></div><p class="muted">Товари, які вже придбані або додані у найближчі плани.</p><div id="pagePurchaseStatusList" class="progress-deferred purchase-progress-list"></div></article>
+      <article class="game-card"><div class="section-head-row"><h2>Заплановані місця</h2><span id="pagePlannedPlacesCount" class="count-badge">0</span></div><p class="muted">Місця, які ви хочете відвідати або спробувати разом.</p><div id="pagePlannedPlacesList" class="progress-deferred planned-places-list"></div></article>
       <article class="game-card"><div class="section-head-row"><h2>Бажання за результатами ігор</h2><span id="pageGameDebtCount" class="count-badge">0</span></div><p class="muted">Після «Підвести результат» гравець із меншим рахунком виконує бажання переможця.</p><div id="pageGameDebtList" class="progress-deferred game-debt-list"></div></article>
     </section>
 
@@ -513,6 +517,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js?v=27"></script>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="app.js?v=56"></script>
+  <script src="app.js?v=59"></script>
 </body>
 </html>

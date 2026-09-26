@@ -1131,3 +1131,123 @@ img,canvas,svg{max-width:100%}
 /* v56: author-only purchase editing */
 .purchase-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.purchase-title-row h3{margin:0;min-width:0}.purchase-edit-btn{flex:0 0 auto;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.045);color:#f3dce7;border-radius:12px;padding:8px 11px;font:inherit;font-size:12px;font-weight:850;cursor:pointer;transition:.18s ease}.purchase-edit-btn:hover{border-color:rgba(255,105,166,.38);background:rgba(255,105,166,.10);transform:translateY(-1px)}
 @media(max-width:620px){.purchase-title-row{align-items:center}.purchase-edit-btn{padding:7px 10px;font-size:11px;border-radius:10px}}
+
+
+/* v57: product photo fills the card image area edge-to-edge */
+.purchase-card{
+  align-items:stretch!important;
+}
+.purchase-image{
+  position:relative!important;
+  height:100%!important;
+  min-height:100%!important;
+  padding:0!important;
+  overflow:hidden!important;
+  align-self:stretch!important;
+  border-radius:0!important;
+  background:radial-gradient(circle at 35% 20%,#34243a,#17131b 70%)!important;
+}
+.purchase-image img{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;
+  height:100%!important;
+  max-height:none!important;
+  object-fit:cover!important;
+  object-position:center!important;
+  border-radius:0!important;
+  background:transparent!important;
+}
+.purchase-image-placeholder{
+  height:100%!important;
+  min-height:100%!important;
+  width:100%!important;
+  border-radius:0!important;
+}
+@media(max-width:620px){
+  .purchase-card{
+    grid-template-columns:1fr!important;
+  }
+  .purchase-image{
+    width:100%!important;
+    height:240px!important;
+    min-height:240px!important;
+  }
+  .purchase-image img{
+    height:100%!important;
+    max-height:none!important;
+    object-fit:cover!important;
+  }
+  .purchase-image-placeholder{
+    height:240px!important;
+    min-height:240px!important;
+  }
+}
+@media(max-width:420px){
+  .purchase-image{
+    height:220px!important;
+    min-height:220px!important;
+  }
+  .purchase-image-placeholder{
+    height:220px!important;
+    min-height:220px!important;
+  }
+}
+
+/* v58: purchased state + owner delete actions */
+.purchase-card.is-purchased{
+  border-color:rgba(92,218,148,.30)!important;
+  box-shadow:inset 0 0 0 1px rgba(92,218,148,.05),0 14px 34px rgba(0,0,0,.18)!important;
+}
+.purchase-card.is-purchased .purchase-image img{filter:saturate(.82) brightness(.88)}
+.purchase-image{position:relative}
+.purchase-bought-overlay{
+  position:absolute;left:12px;bottom:12px;z-index:3;
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:32px;padding:0 11px;border-radius:999px;
+  background:rgba(20,113,68,.92);color:#d7ffe6;font-size:11px;font-weight:900;
+  border:1px solid rgba(139,255,184,.28);backdrop-filter:blur(8px)
+}
+.purchase-card-badges{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.purchase-bought-badge{
+  display:inline-flex;align-items:center;min-height:27px;padding:0 9px;border-radius:999px;
+  color:#a9f5c6;background:rgba(72,196,124,.10);border:1px solid rgba(72,196,124,.25);font-size:10px;font-weight:900
+}
+.purchase-owner-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.purchase-delete-btn{
+  min-height:34px;padding:0 10px;border-radius:10px;border:1px solid rgba(255,91,116,.24);
+  background:rgba(255,79,105,.07);color:#ff9bab;font-weight:850;cursor:pointer
+}
+.purchase-delete-btn:hover{background:rgba(255,79,105,.12)}
+.purchase-status-actions{margin-top:4px}
+.purchase-bought-btn{
+  width:100%;min-height:42px;border-radius:13px;border:1px solid rgba(80,210,137,.24);
+  background:rgba(80,210,137,.08);color:#b6f6cf;font-weight:900;cursor:pointer
+}
+.purchase-bought-btn.active{
+  border-color:rgba(255,255,255,.10);background:rgba(255,255,255,.045);color:#d8ced8
+}
+@media(max-width:720px){
+  .purchase-card-badges{justify-content:flex-start}
+  .purchase-owner-actions{width:100%;justify-content:stretch}
+  .purchase-owner-actions .purchase-edit-btn,.purchase-owner-actions .purchase-delete-btn{flex:1}
+  .purchase-bought-overlay{left:10px;bottom:10px}
+}
+
+/* v59: planned purchases + planned places */
+.place-item-row{grid-template-columns:minmax(0,1fr) auto auto;align-items:stretch}
+.place-item.planned{border-color:rgba(255,183,79,.32);background:rgba(255,183,79,.07);color:#ffd99d}
+.place-item.planned::before{color:#ffc168}
+.place-plan{appearance:none;min-width:96px;padding:0 12px;border:1px solid rgba(255,255,255,.09);border-radius:12px;background:#201a22;color:#cfc4cf;font:inherit;font-size:11px;font-weight:850;cursor:pointer;white-space:nowrap}
+.place-plan:hover{background:#2b222d}.place-plan.active{border-color:rgba(255,187,82,.34);background:rgba(255,187,82,.10);color:#ffd69a}.place-plan:disabled{opacity:.38;cursor:not-allowed}
+.purchase-status-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px}
+.purchase-plan-btn,.purchase-bought-btn{min-height:39px;border-radius:11px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);color:#ddd5dc;font:inherit;font-size:11px;font-weight:850;cursor:pointer;padding:7px 10px}
+.purchase-plan-btn.active{border-color:rgba(255,184,75,.38);background:rgba(255,184,75,.10);color:#ffd697}
+.purchase-plan-badge{font-size:10px;font-weight:900;border-radius:999px;padding:5px 8px;background:rgba(255,184,75,.11);color:#ffd394;white-space:nowrap}
+.purchase-card.is-planned{border-color:rgba(255,184,75,.25);box-shadow:0 14px 32px rgba(0,0,0,.15),inset 0 0 0 1px rgba(255,184,75,.05)}
+.purchase-stat-card.is-purchased .game-debt-icon{background:rgba(78,211,139,.12);color:#8fe8b7}.purchase-stat-card.is-planned .game-debt-icon,.planned-place-card .game-debt-icon{background:rgba(255,184,75,.11);color:#ffd394}
+@media(max-width:620px){
+  .place-item-row{grid-template-columns:minmax(0,1fr) auto}.place-plan{grid-column:1/-1;min-height:38px;width:100%}.place-delete{grid-column:2;grid-row:1}
+  .purchase-status-actions{grid-template-columns:1fr 1fr}.purchase-plan-btn,.purchase-bought-btn{font-size:10px;padding-inline:6px}
+}
+@media(max-width:420px){.purchase-status-actions{grid-template-columns:1fr}.purchase-plan-btn,.purchase-bought-btn{min-height:42px;font-size:11px}}
