@@ -1082,7 +1082,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     const saved=Number(pairStorage.getItem('sa_local_view_role_v1'));
     return saved===1?1:0;
   }
-  function participantLabel(index,withName=true){
+  function extraParticipantLabel(index,withName=true){
     const n=names(), self=extraGameViewRole();
     const prefix=index===self?'Ви':'Ваш партнер';
     return withName?`${prefix} — ${n[index]||('Гравець '+(index+1))}`:prefix;
@@ -1093,9 +1093,9 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   const actions=['Поцілунок','Дотик','Масаж','Стиснути','Облизати','Смоктати','Шльопання'];
   const bodies=['Рука','Сідниці','Спина','Живіт','Щоки','Груди','Пах','Вухо','Стопи','Палець','Коліна','Нога','Губи','Пупок','Шия','Соски','Промежина','Стегно','Пальці ніг'];
   function addSecret(player,input){const val=$(input)?.value.trim();if(!val)return;const d=parse(SECRET,[[],[]]);d[player]||=[];d[player].push(val);save(SECRET,d);$(input).value='';renderSecret()}
-  function renderSecret(){const d=parse(SECRET,[[],[]]); if($('#secretWishP1Title'))$('#secretWishP1Title').textContent=participantLabel(0,true);if($('#secretWishP2Title'))$('#secretWishP2Title').textContent=participantLabel(1,true);if($('#secretWishP1Count'))$('#secretWishP1Count').textContent=`Збережено таємно: ${(d[0]||[]).length}`;if($('#secretWishP2Count'))$('#secretWishP2Count').textContent=`Збережено таємно: ${(d[1]||[]).length}`}
+  function renderSecret(){const d=parse(SECRET,[[],[]]); if($('#secretWishP1Title'))$('#secretWishP1Title').textContent=extraParticipantLabel(0,true);if($('#secretWishP2Title'))$('#secretWishP2Title').textContent=extraParticipantLabel(1,true);if($('#secretWishP1Count'))$('#secretWishP1Count').textContent=`Збережено таємно: ${(d[0]||[]).length}`;if($('#secretWishP2Count'))$('#secretWishP2Count').textContent=`Збережено таємно: ${(d[1]||[]).length}`}
   $('#secretWishP1Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(0,'#secretWishP1Input')});$('#secretWishP2Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(1,'#secretWishP2Input')});
-  $('#revealSecretWishBtn')?.addEventListener('click',()=>{const d=parse(SECRET,[[],[]]), pool=[...(d[0]||[]).map(x=>({p:0,x})),...(d[1]||[]).map(x=>({p:1,x}))],box=$('#secretWishResult'),n=names();if(!pool.length){box.hidden=false;box.innerHTML='<strong>Спочатку додайте хоча б одне бажання.</strong>';return}const r=pool[Math.floor(Math.random()*pool.length)];box.hidden=false;box.innerHTML=`<small>Бажання від: ${participantLabel(r.p,true)}</small><strong>${escapeHtml(r.x)}</strong>`});
+  $('#revealSecretWishBtn')?.addEventListener('click',()=>{const d=parse(SECRET,[[],[]]), pool=[...(d[0]||[]).map(x=>({p:0,x})),...(d[1]||[]).map(x=>({p:1,x}))],box=$('#secretWishResult'),n=names();if(!pool.length){box.hidden=false;box.innerHTML='<strong>Спочатку додайте хоча б одне бажання.</strong>';return}const r=pool[Math.floor(Math.random()*pool.length)];box.hidden=false;box.innerHTML=`<small>Бажання від: ${extraParticipantLabel(r.p,true)}</small><strong>${escapeHtml(r.x)}</strong>`});
   function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
   // scenario reels
   const scenarios=['Романтика','Швидко','Повільно','Без слів','Із зав’язаними очима','У новому місці','Тільки поцілунки']; const durations=['2 хв','5 хв','10 хв','15 хв','20 хв']; let scenMode='duration';
@@ -1112,7 +1112,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   function newBlind(){const box=$('#blindCards'),res=$('#blindResult');if(!box)return;res.hidden=true;box.innerHTML='';for(let i=0;i<3;i++){const b=document.createElement('button');b.className='blind-card';b.innerHTML='<span>?</span><small>Обрати</small>';b.onclick=()=>revealBlind(b);box.appendChild(b)}}
   function revealBlind(btn){if(btn.classList.contains('opened'))return;const types=['Дія','Поза','Місце','Бажання','Бонус'],type=types[Math.floor(Math.random()*types.length)];let value='';if(type==='Дія')value=actions[Math.floor(Math.random()*actions.length)];if(type==='Поза'){const a=poses(),r=a[Math.floor(Math.random()*a.length)];value=r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Поза'}if(type==='Місце'){const a=allPlaces();value=a[Math.floor(Math.random()*a.length)]||'Ваше місце'}if(type==='Бажання'){const d=parse(SECRET,[[],[]]).flat();value=d.length?d[Math.floor(Math.random()*d.length)]:'Додайте бажання у грі «Таємне бажання»'}if(type==='Бонус')value='+1 бал поточному гравцю';btn.classList.add('opened');btn.innerHTML=`<strong>${type}</strong><small>${escapeHtml(value)}</small>`;const res=$('#blindResult');res.hidden=false;res.innerHTML=`<small>${type}</small><strong>${escapeHtml(value)}</strong>`}$('#blindResetBtn')?.addEventListener('click',newBlind);newBlind();
   // battle
-  function addBattle(p,input){const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()};function renderBattle(){const d=parse(BATTLE,[[],[]]);if($('#battleCounts'))$('#battleCounts').textContent=`${participantLabel(0,true)}: ${(d[0]||[]).length}/10 · ${participantLabel(1,true)}: ${(d[1]||[]).length}/10`;const w=parse(BWIN,[]);if($('#battleWinners'))$('#battleWinners').innerHTML=w.length?w.map(x=>`<span class="wish-chip">${escapeHtml(x)}</span>`).join(''):'<span class="muted">Ще немає переможців</span>'}
+  function addBattle(p,input){const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()};function renderBattle(){const d=parse(BATTLE,[[],[]]);if($('#battleCounts'))$('#battleCounts').textContent=`${extraParticipantLabel(0,true)}: ${(d[0]||[]).length}/10 · ${extraParticipantLabel(1,true)}: ${(d[1]||[]).length}/10`;const w=parse(BWIN,[]);if($('#battleWinners'))$('#battleWinners').innerHTML=w.length?w.map(x=>`<span class="wish-chip">${escapeHtml(x)}</span>`).join(''):'<span class="muted">Ще немає переможців</span>'}
   $('#battleP1Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(0,'#battleP1Input')});$('#battleP2Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(1,'#battleP2Input')});$('#battleStartBtn')?.addEventListener('click',()=>{const d=parse(BATTLE,[[],[]]),arena=$('#battleArena');if(!(d[0]?.length&&d[1]?.length)){arena.hidden=false;arena.innerHTML='<strong>Додайте бажання від обох гравців.</strong>';return}const a=d[0][Math.floor(Math.random()*d[0].length)],b=d[1][Math.floor(Math.random()*d[1].length)];arena.hidden=false;arena.innerHTML=`<button class="battle-option">${escapeHtml(a)}</button><span>VS</span><button class="battle-option">${escapeHtml(b)}</button>`;arena.querySelectorAll('.battle-option').forEach(x=>x.onclick=()=>{const w=parse(BWIN,[]);w.push(x.textContent);save(BWIN,w);renderBattle();arena.hidden=true})});renderBattle();
   // quest
   let quest=null,questStep=0;function makeQuest(){const ps=poses(),wish=parse(SECRET,[[],[]]).flat();return [{type:'Місце',value:(()=>{const a=allPlaces();return a[Math.floor(Math.random()*a.length)]||'Обране вами місце'})()},{type:'Дія',value:actions[Math.floor(Math.random()*actions.length)]},{type:'Частина тіла',value:bodies[Math.floor(Math.random()*bodies.length)]},{type:'Поза',value:(()=>{const r=ps[Math.floor(Math.random()*ps.length)];return r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Випадкова поза'})()},{type:'Фінальне бажання',value:wish.length?wish[Math.floor(Math.random()*wish.length)]:'Додайте власне бажання'}]};function renderQuest(){const el=$('#questSteps');if(!el)return;el.innerHTML=(quest||[]).map((s,i)=>`<div class="quest-step ${i<questStep?'done':i===questStep?'active':'locked'}"><span>${i+1}</span><div><small>${s.type}</small><strong>${i<=questStep?escapeHtml(s.value):'Заблоковано'}</strong></div></div>`).join('');$('#questNextBtn').disabled=!quest||questStep>=quest.length-1}$('#questNewBtn')?.addEventListener('click',()=>{quest=makeQuest();questStep=0;renderQuest()});$('#questNextBtn')?.addEventListener('click',()=>{if(quest&&questStep<quest.length-1){questStep++;renderQuest()}});renderQuest();
@@ -1189,28 +1189,52 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       if(conn?.open||!peer||peer.destroyed)return;
       reconnectAttempts++;
       status(`Відновлюємо сесію… спроба ${reconnectAttempts}`);
-      try{wire(peer.connect(sessionCode,{reliable:true}),false,sessionCode,true)}catch{}
+      try{wire(peer.connect(sessionCode,{reliable:true}),false,sessionCode,false)}catch{}
     },Math.min(5000,1000+reconnectAttempts*700));
   }
   function wire(c,hostSide,sessionCode,restored=false){
     if(conn&&conn!==c){try{conn.close()}catch{}}
     conn=c;isHost=hostSide;$('#leaveSessionBtn').hidden=false;
     c.on('open',async()=>{
-      clearReconnect();restoring=false;
-      status(restored?'Сесію відновлено · синхронізація активна':'Підключено · синхронізація активна',true);updateRoleStatus(false);
+      clearReconnect();
+      const recoveringThisPage=!!restored;
+      restoring=false;
+      status(recoveringThisPage?'Сесію відновлено · отримуємо актуальний екран партнера…':'Підключено · синхронізація активна',true);updateRoleStatus(false);
       await saveSessionMeta(hostSide?'host':'guest',sessionCode);
-      send({type:'hello',role:localRole,players:PairDB.active?.players||null});
-      if(isHost&&PairDB.active)sendPair(PairDB.active);
-      sendUI('tab',{which:document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1')||'calendar'});
-      const activeGame=document.body.dataset.activeGame||pairStorage.getItem('sa_active_game_v2');
-      if(activeGame)sendUI('game',{key:activeGame}); else if((document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1'))==='games')sendUI('game-menu',{});
-      scheduleUISnapshot(300);
+      send({type:'hello',role:localRole,players:PairDB.active?.players||null,recovering:recoveringThisPage});
+      if(recoveringThisPage){
+        // Після reload не відправляємо старий локальний UI/профіль.
+        // Просимо пристрій, який залишався онлайн, надіслати актуальний стан.
+        send({type:'state-request',origin:peer?.id||null,ts:Date.now()});
+      }else{
+        if(isHost&&PairDB.active)sendPair(PairDB.active);
+        sendUI('tab',{which:document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1')||'calendar'});
+        const activeGame=document.body.dataset.activeGame||pairStorage.getItem('sa_active_game_v2');
+        if(activeGame)sendUI('game',{key:activeGame}); else if((document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1'))==='games')sendUI('game-menu',{});
+        scheduleUISnapshot(220);
+      }
     });
     c.on('data',async msg=>{
       // Ignore reflected UI messages from our own Peer id.
       if(msg?.origin&&peer?.id&&msg.origin===peer.id)return;
+      if(msg?.type==='state-request'){
+        // Інша сторона щойно перезавантажилась. Саме цей пристрій є джерелом
+        // актуальної вкладки/гри та прогресу.
+        if(PairDB.active){
+          try{send({type:'pair',pair:JSON.parse(JSON.stringify(PairDB.active))})}catch{}
+        }
+        send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true});
+        return;
+      }
       if(msg?.type==='hello'){
-        remoteRole=Number(msg.role);const conflict=remoteRole===localRole;updateRoleStatus(conflict);status(conflict?'Підключено, але є конфлікт ролей':'Підключено · синхронізація активна',!conflict);return;
+        remoteRole=Number(msg.role);const conflict=remoteRole===localRole;updateRoleStatus(conflict);status(conflict?'Підключено, але є конфлікт ролей':'Підключено · синхронізація активна',!conflict);
+        // Якщо партнер повідомляє, що він після reload, повторно надішлемо
+        // актуальний стан після hello — це робить відновлення стійкішим до гонок.
+        if(msg.recovering){
+          if(PairDB.active){try{send({type:'pair',pair:JSON.parse(JSON.stringify(PairDB.active))})}catch{}}
+          setTimeout(()=>send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true}),80);
+        }
+        return;
       }
       if(msg?.type==='pair'&&msg.pair){isApplying=true;try{lastSent=JSON.stringify(msg.pair);await PairDB.applyRemote(msg.pair);const g=$('#pairGate'),sh=$('#appShell'),lab=$('#activePairLabel');if(g)g.hidden=true;if(sh)sh.hidden=false;if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');updateRoleStatus(remoteRole===localRole);status(remoteRole===localRole?'Синхронізовано · конфлікт ролей':'Синхронізовано',remoteRole!==localRole)}finally{setTimeout(()=>isApplying=false,220)}return}
       if(msg?.type==='ui'){uiApply=true;try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}finally{setTimeout(()=>uiApply=false,100)}return}
