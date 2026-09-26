@@ -1076,6 +1076,17 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   'use strict';
   const $=s=>document.querySelector(s); const parse=(k,f)=>{try{return JSON.parse(pairStorage.getItem(k)||JSON.stringify(f))}catch{return f}}; const save=(k,v)=>pairStorage.setItem(k,JSON.stringify(v));
   const names=()=>{try{return JSON.parse(pairStorage.getItem('sa_games_player_names_v1')||'[]')}catch{return []}};
+  function extraGameViewRole(){
+    const sessionRole=window.SessionSync?.role;
+    if(sessionRole===0||sessionRole===1)return Number(sessionRole);
+    const saved=Number(pairStorage.getItem('sa_local_view_role_v1'));
+    return saved===1?1:0;
+  }
+  function participantLabel(index,withName=true){
+    const n=names(), self=extraGameViewRole();
+    const prefix=index===self?'Ви':'Ваш партнер';
+    return withName?`${prefix} — ${n[index]||('Гравець '+(index+1))}`:prefix;
+  }
   const SECRET='sa_secret_wishes_v1', BATTLE='sa_battle_wishes_v1', BWIN='sa_battle_winners_v1', RATINGS='sa_five_ratings_v1';
   const poses=()=>Array.isArray(window.POSITION_ITEMS)?window.POSITION_ITEMS.filter(x=>x.audience==='mf'):[];
   const allPlaces=()=>document.querySelectorAll('.place-chip').length?[...document.querySelectorAll('.place-chip')].map(x=>x.textContent.replace(/×$/,'').trim()).filter(Boolean):['У машині','У ванній','На дивані','У готельному номері','На природі'];
