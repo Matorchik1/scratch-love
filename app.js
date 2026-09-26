@@ -653,6 +653,12 @@ const pairStorage={
   }
   function openGame(key, syncSession=true){
     const meta=gameMeta[key]; if(!meta) return;
+    // Pair/session updates can call openGame() again while the same game is already
+    // visible. Re-initialising the reels here used to reset them *after* a completed
+    // spin, so the result box showed the chosen value while the reel jumped back to
+    // an older local value. Only initialise game-specific visuals when actually
+    // switching into a different game.
+    const sameGame=document.body.dataset.activeGame===key && !gameDetail.hidden;
     gamesMenu.hidden=true; gameDetail.hidden=false;
     if(activeGameTitle) activeGameTitle.textContent=meta.title;
     if(playersPanel) playersPanel.hidden=!meta.players;
@@ -660,9 +666,11 @@ const pairStorage={
     Object.entries(gameViews).forEach(([k,v])=>{if(v) v.hidden=k!==key});
     syncPlayers();
     renderCustomOptions();
-    if(key==='passion'){passionActionSlot.setPool(actionPool());passionActionSlot.reset();passionBodySlot.reset();}
-    if(key==='direct') directBodySlot.reset();
-    if(key==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}
+    if(!sameGame){
+      if(key==='passion'){passionActionSlot.setPool(actionPool());passionActionSlot.reset();passionBodySlot.reset();}
+      if(key==='direct') directBodySlot.reset();
+      if(key==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}
+    }
     document.body.dataset.activeGame=key;
     delete document.body.dataset.gameMenu;
     if(syncSession && !window.SessionSync?.connected) pairStorage.setItem(ACTIVE_GAME_KEY,key);
@@ -782,37 +790,144 @@ const pairStorage={
       if(!clean.length) return;
       this.pool=clean; this.current=Math.min(this.current,this.pool.length-1); this.reset();
     }
-    renderSequence(sequence,targetIndex=0,animate=false){
+    renderSequence(sequence,targetIndex=1,animate=false){
       if(!this.track) return;
       this.track.innerHTML='';
-      sequence.forEach(value=>{const d=document.createElement('div');d.className='slot-item';d.textContent=value;this.track.appendChild(d)});
-      this.track.style.transition='none'; this.track.style.transform='translateY(0px)';
+      sequence.forEach((value,index)=>{
+        const d=document.createElement('div');
+        d.className='slot-item'+(index===targetIndex?' slot-final-target':'');
+        d.textContent=value;
+        this.track.appendChild(d);
+      });
+      this.track.style.transition='none';
+      this.track.style.transform='translateY(0px)';
+      // CSS uses 54px rows on desktop and 48px on narrow screens. Measure the
+      // actual rendered row so the reel lands on the real centre row.
+      const firstItem=this.track.querySelector('.slot-item');
+      const measured=firstItem?.getBoundingClientRect?.().height;
+      if(Number.isFinite(measured)&&measured>0)this.itemHeight=measured;
       if(animate){
-        requestAnimationFrame(()=>requestAnimationFrame(()=>{
-          this.track.style.transition='transform 2.85s cubic-bezier(.08,.65,.12,1)';
-          this.track.style.transform=`translateY(${-(targetIndex-1)*this.itemHeight}px)`;
-        }));
+        const distance=-(targetIndex-1)*this.itemHeight;
+        // Force the browser to commit the starting position before the transition.
+        // The final DOM row is already the selected value, so there is no post-spin
+        // replacement/jump after the reel visually stops.
+        void this.track.offsetHeight;
+        requestAnimationFrame(()=>{
+          this.track.style.transition='transform 3.6s cubic-bezier(.16,.78,.18,1)';
+          this.track.style.transform=`translateY(${distance}px)`;
+        });
       }
     }
     reset(){
       if(!this.pool.length || !this.track) return;
       const n=this.pool.length,c=((this.current%n)+n)%n;
-      this.renderSequence([this.pool[(c-1+n)%n],this.pool[c],this.pool[(c+1)%n]],0,false);
+      this.renderSequence([this.pool[(c-1+n)%n],this.pool[c],this.pool[(c+1)%n]],1,false);
+    }
+    currentValue(){
+      if(!this.pool.length)return null;
+      const n=this.pool.length,c=((this.current%n)+n)%n;
+      return this.pool[c] || null;
     }
     spinTo(value=null){
       if(this.busy || !this.pool.length) return Promise.reject(new Error('busy'));
       this.busy=true; this.root?.classList.add('is-spinning');
       let target=value===null?Math.floor(Math.random()*this.pool.length):this.pool.indexOf(value);
       if(target<0) target=Math.floor(Math.random()*this.pool.length);
+      const targetValue=this.pool[target];
       const sequence=[];
       for(let i=0;i<38;i++) sequence.push(this.pool[(this.current+i)%this.pool.length]);
-      sequence.push(this.pool[(target-1+this.pool.length)%this.pool.length],this.pool[target],this.pool[(target+1)%this.pool.length]);
-      const targetIndex=sequence.length-2; this.renderSequence(sequence,targetIndex,true);
-      return new Promise(resolve=>setTimeout(()=>{
-        this.current=target; this.busy=false; this.root?.classList.remove('is-spinning'); this.reset(); resolve(this.pool[target]);
-      },2920));
+      // The last three rows are always prev / TARGET / next. The animation lands
+      // with TARGET exactly in the centre row, and only then may the result box open.
+      sequence.push(this.pool[(target-1+this.pool.length)%this.pool.length],targetValue,this.pool[(target+1)%this.pool.length]);
+      const targetIndex=sequence.length-2;
+      this.renderSequence(sequence,targetIndex,true);
+      return new Promise(resolve=>{
+        let finished=false;
+        const finish=()=>{
+          if(finished)return; finished=true;
+          this.track?.removeEventListener('transitionend',onEnd);
+          this.current=target;
+          // IMPORTANT: do not rebuild/reset the reel here. The animation itself
+          // already landed with TARGET in the centre. Rebuilding after stop was
+          // the visible "stopped on X, then switched to Y" bug.
+          this.busy=false;
+          this.root?.classList.remove('is-spinning');
+          resolve(targetValue);
+        };
+        const onEnd=(e)=>{if(e.target===this.track&&e.propertyName==='transform')finish()};
+        this.track?.addEventListener('transitionend',onEnd);
+        // Fallback only if the browser drops transitionend.
+        setTimeout(finish,3900);
+      });
     }
     spin(){ return this.spinTo(null); }
+  }
+
+
+
+  // Stable three-row reel used by Passion Roulette. It never relies on a long
+  // translated strip, so the value visible in the centre is always the value
+  // that becomes the result. The same seed produces the same animation on both peers.
+  class SyncedPassionReel {
+    constructor(root,pool){
+      this.root=root; this.track=root?.querySelector('.slot-track'); this.pool=[...pool];
+      this.current=0; this.busy=false; this.pendingPool=null; this.timer=null; this.reset();
+    }
+    setPool(pool){
+      const clean=[...pool]; if(!clean.length)return;
+      if(this.busy){this.pendingPool=clean;return;}
+      const cur=this.currentValue(); this.pool=clean;
+      const ix=cur?this.pool.indexOf(cur):-1; this.current=ix>=0?ix:Math.min(this.current,this.pool.length-1);
+      this.reset();
+    }
+    renderIndex(index){
+      if(!this.track||!this.pool.length)return;
+      const n=this.pool.length, c=((index%n)+n)%n;
+      const vals=[this.pool[(c-1+n)%n],this.pool[c],this.pool[(c+1)%n]];
+      this.track.style.transition='none'; this.track.style.transform='translateY(0px)';
+      this.track.innerHTML='';
+      vals.forEach((value,i)=>{
+        const d=document.createElement('div'); d.className='slot-item'+(i===1?' slot-final-target':'');
+        d.textContent=value; this.track.appendChild(d);
+      });
+      this.current=c;
+    }
+    reset(){if(!this.busy)this.renderIndex(this.current)}
+    currentValue(){return this.pool.length?this.pool[((this.current%this.pool.length)+this.pool.length)%this.pool.length]:null}
+    spinTo(value,{seed=1,steps=38}={}){
+      if(this.busy||!this.pool.length)return Promise.reject(new Error('busy'));
+      let target=this.pool.indexOf(value); if(target<0)target=0;
+      this.busy=true; this.root?.classList.add('is-spinning');
+      clearTimeout(this.timer);
+      // Tiny deterministic PRNG. We create all intermediate frames up front,
+      // but force the last centre value to be the chosen target.
+      let state=(Number(seed)>>>0)||1;
+      const rnd=()=>{state=(Math.imul(state,1664525)+1013904223)>>>0;return state/4294967296};
+      const frames=[]; let last=-1;
+      for(let i=0;i<Math.max(12,steps)-1;i++){
+        let ix=Math.floor(rnd()*this.pool.length);
+        if(this.pool.length>1&&ix===last)ix=(ix+1+Math.floor(rnd()*(this.pool.length-1)))%this.pool.length;
+        frames.push(ix); last=ix;
+      }
+      frames.push(target);
+      return new Promise(resolve=>{
+        let i=0;
+        const tick=()=>{
+          const ix=frames[i]; this.renderIndex(ix); i++;
+          if(i>=frames.length){
+            this.current=target; this.renderIndex(target);
+            this.busy=false; this.root?.classList.remove('is-spinning');
+            if(this.pendingPool){const pp=this.pendingPool;this.pendingPool=null;this.setPool(pp);}
+            resolve(this.pool[target]); return;
+          }
+          const t=i/(frames.length-1);
+          // Quick at first, then a clearly visible ease-out near the final choice.
+          const delay=Math.round(48 + 132*t*t);
+          this.timer=setTimeout(tick,delay);
+        };
+        tick();
+      });
+    }
   }
 
   const bodyPoolForTarget=()=>{
@@ -820,10 +935,12 @@ const pairStorage={
     return [...BODY_PARTS,...getCustomBody()].filter(x=>x.gender==='any'||x.gender===gender).map(x=>x.label);
   };
 
-  const passionActionSlot=new SlotReel($('#passionActionReel'),actionPool());
-  const passionBodySlot=new SlotReel($('#passionBodyReel'),bodyPoolForTarget());
+  const passionActionSlot=new SyncedPassionReel($('#passionActionReel'),actionPool());
+  const passionBodySlot=new SyncedPassionReel($('#passionBodyReel'),bodyPoolForTarget());
   const directBodySlot=new SlotReel($('#directBodyReel'),bodyPoolForTarget());
   let pendingGame=null, rolling=false, directAction='Стиснути';
+  let lastRollCompletedAt=0;
+  let activeRollId=null;
 
   function refreshBodyPools(){
     const pool=bodyPoolForTarget();
@@ -1023,9 +1140,10 @@ const pairStorage={
   });
   renderRandomLevelFilter();
 
-  function showResult(gameKey,resultText,turnLabelEl,resultEl,box,forcedTurn=null){
+  function showResult(gameKey,resultText,turnLabelEl,resultEl,box,forcedTurn=null,resultId=null){
     const turn=(forcedTurn===0||forcedTurn===1)?forcedTurn:getTurn(),target=(turn+1)%2;
-    pendingGame={id:'result_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),gameKey,turn,resultText,createdAt:Date.now()};
+    pendingGame={id:resultId||('result_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),gameKey,turn,resultText,createdAt:Date.now()};
+    lastRollCompletedAt=Date.now();
     pairStorage.setItem(PENDING_GAME_KEY,JSON.stringify(pendingGame));
     if(turnLabelEl) turnLabelEl.textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;
     if(resultEl) resultEl.textContent=resultText;
@@ -1061,16 +1179,28 @@ const pairStorage={
   async function runPassionRoll(forced=null,remote=false){
     if(rolling)return;
     const button=$('#passionRollBtn'); rolling=true; if(button)button.disabled=true;if(pbox)pbox.hidden=true;refreshBodyPools();
+    const rollId=forced?.rollId||('passion_'+Date.now()+'_'+Math.random().toString(36).slice(2,7));
+    activeRollId=rollId;
     try{
-      const action=forced?.action || actionPool()[Math.floor(Math.random()*actionPool().length)];
+      const actions=actionPool();
+      const action=forced?.action || actions[Math.floor(Math.random()*actions.length)];
       const bp=bodyPoolForTarget(); const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
       const turn=(forced?.turn===0||forced?.turn===1)?forced.turn:getTurn();
-      const delayMs=Number(forced?.delayMs)|| (window.SessionSync?.connected?550:0);
-      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,delayMs});
-      if(delayMs)await waitUntil(null,delayMs);
-      const [a,b]=await Promise.all([passionActionSlot.spinTo(action),passionBodySlot.spinTo(body)]);
-      showResult('passion',`${a} — ${b}`,$('#passionTurnLabel'),$('#passionResult'),pbox,turn);
-    }catch(err){console.error(err)}finally{rolling=false;if(button)button.disabled=false}
+      const seed=Number(forced?.seed)||Math.floor(Math.random()*0x7fffffff)||1;
+      // One absolute start moment gives both peers the same visible beginning.
+      // A generous lead time absorbs ordinary WebRTC latency.
+      const startAt=Number(forced?.startAt)|| (window.SessionSync?.connected?Date.now()+1000:Date.now());
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,startAt,seed,rollId});
+      await waitUntil(startAt,0);
+      const [finalAction,finalBody]=await Promise.all([
+        passionActionSlot.spinTo(action,{seed:seed^0x13579bdf,steps:40}),
+        passionBodySlot.spinTo(body,{seed:seed^0x2468ace0,steps:40})
+      ]);
+      if(activeRollId!==rollId)return;
+      // These are exactly the centre values left visible by the reels. No second
+      // random source and no post-animation replacement.
+      showResult('passion',`${finalAction} — ${finalBody}`,$('#passionTurnLabel'),$('#passionResult'),pbox,turn,'result_'+rollId);
+    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;if(button)button.disabled=false}
   }
   $('#passionRollBtn')?.addEventListener('click',()=>runPassionRoll());
   $('#passionDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(true)});
@@ -1083,22 +1213,38 @@ const pairStorage={
   const dbox=$('#directResultBox');
   async function runDirectRoll(forced=null,remote=false){
     if(rolling)return;const button=$('#directRollBtn');rolling=true;if(button)button.disabled=true;if(dbox)dbox.hidden=true;refreshBodyPools();
+    const rollId=forced?.rollId||('direct_'+Date.now()+'_'+Math.random().toString(36).slice(2,7));
+    activeRollId=rollId;
     try{
       if(forced?.directAction) directAction=forced.directAction;
       document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));
       const bp=bodyPoolForTarget();const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
       const turn=(forced?.turn===0||forced?.turn===1)?forced.turn:getTurn();
       const delayMs=Number(forced?.delayMs)|| (window.SessionSync?.connected?550:0);
-      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'direct-roll',directAction,body,turn,delayMs});
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'direct-roll',directAction,body,turn,delayMs,rollId});
       if(delayMs)await waitUntil(null,delayMs);
-      const b=await directBodySlot.spinTo(body);showResult('direct',`${directAction} — ${b}`,$('#directTurnLabel'),$('#directResult'),dbox,turn);
-    }catch(err){console.error(err)}finally{rolling=false;if(button)button.disabled=false}
+      await directBodySlot.spinTo(body);
+      if(activeRollId!==rollId)return;
+      const visibleBody=directBodySlot.currentValue()||body;
+      showResult('direct',`${directAction} — ${visibleBody}`,$('#directTurnLabel'),$('#directResult'),dbox,turn,'result_'+rollId);
+    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;if(button)button.disabled=false}
   }
   $('#directRollBtn')?.addEventListener('click',()=>runDirectRoll());
   $('#directDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(true)});
   $('#directNoBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(false)});
 
-  function refreshPendingResult(){try{pendingGame=JSON.parse(pairStorage.getItem(PENDING_GAME_KEY)||'null')}catch{pendingGame=null}if(!pendingGame)return;if(pendingGame.gameKey==='passion'&&pbox)showResult('passion',pendingGame.resultText||'—',$('#passionTurnLabel'),$('#passionResult'),pbox,pendingGame.turn);if(pendingGame.gameKey==='direct'&&dbox)showResult('direct',pendingGame.resultText||'—',$('#directTurnLabel'),$('#directResult'),dbox,pendingGame.turn)}
+  function refreshPendingResult(){
+    // Do not let a delayed pair/snapshot write replace the result that has just
+    // been derived from the visible centre of a spinning reel.
+    if(rolling||activeRollId||Date.now()-lastRollCompletedAt<1500)return;
+    let stored=null;try{stored=JSON.parse(pairStorage.getItem(PENDING_GAME_KEY)||'null')}catch{stored=null}
+    if(!stored)return;
+    pendingGame=stored;
+    const turn=stored.turn;
+    const target=(Number(turn)+1)%2;
+    if(stored.gameKey==='passion'&&pbox){$('#passionTurnLabel').textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;$('#passionResult').textContent=stored.resultText||'—';pbox.hidden=false;pbox.dataset.pendingResultId=stored.id||'';setResultButtonsEnabled('passion',true)}
+    if(stored.gameKey==='direct'&&dbox){$('#directTurnLabel').textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;$('#directResult').textContent=stored.resultText||'—';dbox.hidden=false;dbox.dataset.pendingResultId=stored.id||'';setResultButtonsEnabled('direct',true)}
+  }
   function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); refreshPendingResult(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
   document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}refreshPendingResult();});
@@ -1110,9 +1256,9 @@ const pairStorage={
     if(m.kind==='game-menu') showGamesMenu(false,true);
     if(m.kind==='game-action'){
       const a=m.payload?.action;
-      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,delayMs:m.payload.delayMs},true);}
+      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
-      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,delayMs:m.payload.delayMs},true);}
+      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,delayMs:m.payload.delayMs,rollId:m.payload.rollId},true);}
       if(a==='score-resolve'){resolveResult(!!m.payload.completed,false,{gameKey:m.payload.gameKey,turn:m.payload.turn,score:m.payload.score,nextTurn:m.payload.nextTurn});}
       if(a==='random-pose-levels'){
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
@@ -1305,7 +1451,9 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   async function clearSessionMeta(){try{await PairDB.setMeta(SESSION_META,null)}catch{}}
 
   const mirrorIds=['scenarioResult','fiveMode','fiveRating','fiveRatingHistory','secretWishResult','secretWishP1Count','secretWishP2Count','blindResult','battleCounts','battleWinners','questSteps','fortuneLevelSummary'];
-  const slotSelectors=['#passionActionSlot .slot-track','#passionBodySlot .slot-track','#directBodySlot .slot-track','#scenarioMainReel .slot-track','#scenarioSecondReel .slot-track'];
+  // Reel DOM is synchronized by game-action events, never by snapshots.
+  // Mirroring innerHTML during an animation interrupts the reel mid-spin.
+  const slotSelectors=[];
   function captureUI(){
     const fields={};
     mirrorIds.forEach(id=>{const el=document.getElementById(id);if(!el)return;fields[id]={hidden:!!el.hidden,html:el.innerHTML,text:el.textContent}});
@@ -1323,10 +1471,18 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     try{
       // Apply navigation first, so snapshot content lands in the visible game instead of the menu.
       if(snap.mainTab){
-        document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'tab',payload:{which:snap.mainTab},fromSnapshot:true}}));
+        const currentTab=document.body.dataset.mainTab||null;
+        const currentGame=document.body.dataset.activeGame||null;
+        const currentMenu=document.body.dataset.gameMenu==='1';
+        if(currentTab!==snap.mainTab){
+          document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'tab',payload:{which:snap.mainTab},fromSnapshot:true}}));
+        }
         if(snap.mainTab==='games'){
-          if(snap.gameMenu)document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game-menu',payload:{},fromSnapshot:true}}));
-          else if(snap.activeGame)document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game',payload:{key:snap.activeGame},fromSnapshot:true}}));
+          if(snap.gameMenu){
+            if(!currentMenu)document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game-menu',payload:{},fromSnapshot:true}}));
+          }else if(snap.activeGame&&currentGame!==snap.activeGame){
+            document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game',payload:{key:snap.activeGame},fromSnapshot:true}}));
+          }
         }
       }
       Object.entries(snap.fields||{}).forEach(([id,v])=>{const el=document.getElementById(id);if(!el)return;if('hidden'in v)el.hidden=!!v.hidden;if(v.src&&el.tagName==='IMG'){el.src=v.src;if(v.alt)el.alt=v.alt}else if(typeof v.html==='string')el.innerHTML=v.html;if(v.transform&&id==='fortuneWheelRotor'){el.style.transform=v.transform;el.style.transition=v.transition||''}});
@@ -1442,7 +1598,12 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   $('#leaveSessionBtn')?.addEventListener('click',async()=>{clearReconnect();try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;remoteRole=null;restoring=false;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено');localRole=null;updateRoleStatus(false);await clearSessionMeta()});
   document.addEventListener('pair:state-saved',e=>{sendPair(e.detail);scheduleUISnapshot(150)});
   document.addEventListener('pair:profile',()=>sendPair(PairDB.active));
-  document.addEventListener('click',e=>{if(!conn?.open||uiApply)return;const interactive=e.target.closest('button,[data-game],.calendar-day,.place-item,input[type=checkbox],select');if(!interactive)return;scheduleUISnapshot(220)});
+  document.addEventListener('click',e=>{if(!conn?.open||uiApply)return;const interactive=e.target.closest('button,[data-game],.calendar-day,.place-item,input[type=checkbox],select');if(!interactive)return;
+    // Game actions have their own deterministic session events. A generic UI
+    // snapshot during a spin can overwrite the live reel DOM and stop it.
+    if(interactive.closest('#gameDetail'))return;
+    scheduleUISnapshot(220)
+  });
   document.addEventListener('change',()=>scheduleUISnapshot(160));
   // No periodic UI snapshots: they caused visible flashing and could re-apply stale navigation.
 
