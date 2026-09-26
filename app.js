@@ -513,7 +513,7 @@ const pairStorage={
     clearTimeout(toast.t);
     toast.t=setTimeout(()=>el.classList.remove('show'),1800);
   }
-  const calendarTabBtn=$('#calendarTabBtn'), placesTabBtn=$('#placesTabBtn'), gamesTabBtn=$('#gamesTabBtn'), progressTabBtn=$('#progressTabBtn'), calendarSection=$('#calendarSection'), placesSection=$('#placesSection'), gamesSection=$('#gamesSection'), progressSection=$('#progressSection');
+  const calendarTabBtn=$('#calendarTabBtn'), placesTabBtn=$('#placesTabBtn'), gamesTabBtn=$('#gamesTabBtn'), purchasesTabBtn=$('#purchasesTabBtn'), progressTabBtn=$('#progressTabBtn'), calendarSection=$('#calendarSection'), placesSection=$('#placesSection'), gamesSection=$('#gamesSection'), purchasesSection=$('#purchasesSection'), progressSection=$('#progressSection');
   if(!gamesSection) return;
 
   const NAMES_KEY='sa_games_player_names_v1',
@@ -795,8 +795,8 @@ const pairStorage={
   document.addEventListener('session:role-changed',()=>syncPlayers());
 
   function showTab(which, syncSession=true){
-    calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(progressSection)progressSection.hidden=which!=='progress';
-    calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); progressTabBtn?.classList.toggle('active',which==='progress');
+    calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(purchasesSection)purchasesSection.hidden=which!=='purchases'; if(progressSection)progressSection.hidden=which!=='progress';
+    calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); purchasesTabBtn?.classList.toggle('active',which==='purchases'); progressTabBtn?.classList.toggle('active',which==='progress');
     if(syncSession && !window.SessionSync?.connected) pairStorage.setItem('sa_main_tab_v1',which);
     document.body.dataset.mainTab=which;
     if(which==='games'){
@@ -808,11 +808,13 @@ const pairStorage={
     }
     if(which==='places') renderPlaces();
     if(which==='progress') renderProgressPage();
+    if(which==='purchases') document.dispatchEvent(new CustomEvent('purchases:render'));
     if(syncSession) window.SessionSync?.sendUI?.('tab',{which});
   }
   calendarTabBtn?.addEventListener('click',()=>showTab('calendar'));
   placesTabBtn?.addEventListener('click',()=>showTab('places'));
   gamesTabBtn?.addEventListener('click',()=>showTab('games'));
+  purchasesTabBtn?.addEventListener('click',()=>showTab('purchases'));
   progressTabBtn?.addEventListener('click',()=>showTab('progress'));
 
   const PAGE_DONE_KEY='sa_position_done_mf', PAGE_DEFERRED_KEY='sa_position_deferred_mf_v1', PAGE_HISTORY_KEY='sa_position_history_mf_v1';
@@ -1475,7 +1477,7 @@ const pairStorage={
     if(stored.gameKey==='passion'&&pbox){$('#passionTurnLabel').textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;$('#passionResult').textContent=stored.resultText||'—';pbox.hidden=false;pbox.dataset.pendingResultId=stored.id||'';setResultButtonsEnabled('passion',true)}
     if(stored.gameKey==='direct'&&dbox){$('#directTurnLabel').textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;$('#directResult').textContent=stored.resultText||'—';dbox.hidden=false;dbox.dataset.pendingResultId=stored.id||'';setResultButtonsEnabled('direct',true)}
   }
-  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); refreshPendingResult(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
+  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); refreshPendingResult(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','purchases','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','purchases','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(purchasesSection)purchasesSection.hidden=true; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
   document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}refreshPendingResult();});
   
@@ -1866,6 +1868,129 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
 })();
 
 
+
+// --- v53: shared desired purchases / couple wishlist ---
+(() => {
+  'use strict';
+  const KEY='sa_desired_purchases_v1';
+  const $=s=>document.querySelector(s);
+  const section=$('#purchasesSection');
+  if(!section)return;
+  const listEl=$('#purchaseList');
+  const form=$('#purchaseForm');
+  const openBtn=$('#openPurchaseFormBtn');
+  const closeBtn=$('#closePurchaseFormBtn');
+  const nameInput=$('#purchaseNameInput');
+  const priceInput=$('#purchasePriceInput');
+  const qtyInput=$('#purchaseQtyInput');
+  const urlInput=$('#purchaseUrlInput');
+  const imageInput=$('#purchaseImageInput');
+  let filter='all';
+
+  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const rows=()=>{try{const x=JSON.parse(pairStorage.getItem(KEY)||'[]');return Array.isArray(x)?x:[]}catch{return []}};
+  const save=(items,{sync=true,event=null}={})=>{
+    pairStorage.setItem(KEY,JSON.stringify(items));
+    PairDB.save?.();
+    if(sync&&event&&window.SessionSync?.connected)window.SessionSync.replyUI?.('purchase-action',event);
+    render();
+  };
+  const role=()=>{const r=window.SessionSync?.role;return r===0||r===1?Number(r):0};
+  const players=()=>PairDB.active?.players||[{name:'Гравець 1'},{name:'Гравець 2'}];
+  const localRole=()=>role();
+  const fmt=n=>new Intl.NumberFormat('uk-UA',{minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(n)||0);
+  const plural=n=>{const a=Math.abs(n)%100,b=a%10;return a>10&&a<20?'товарів':b===1?'товар':b>=2&&b<=4?'товари':'товарів'};
+  const validHttp=u=>{try{const x=new URL(u);return x.protocol==='http:'||x.protocol==='https:'}catch{return false}};
+  function requireSession(){return window.requireSyncedPartnerSession?window.requireSyncedPartnerSession():!!window.SessionSync?.ready}
+
+  function renderTotals(items){
+    const me=localRole(), partner=me===0?1:0;
+    const sumFor=r=>items.filter(x=>Number(x.addedBy)===r).reduce((s,x)=>s+(Number(x.price)||0)*Math.max(1,Number(x.qty)||1),0);
+    const countFor=r=>items.filter(x=>Number(x.addedBy)===r).reduce((s,x)=>s+Math.max(1,Number(x.qty)||1),0);
+    const total=items.reduce((s,x)=>s+(Number(x.price)||0)*Math.max(1,Number(x.qty)||1),0);
+    const totalCount=items.reduce((s,x)=>s+Math.max(1,Number(x.qty)||1),0);
+    $('#purchaseGrandTotal').textContent=fmt(total);
+    $('#purchaseGrandItems').textContent=`${totalCount} ${plural(totalCount)}`;
+    $('#purchaseSelfTotal').textContent=fmt(sumFor(me));
+    $('#purchaseSelfItems').textContent=`${countFor(me)} ${plural(countFor(me))}`;
+    $('#purchasePartnerTotal').textContent=fmt(sumFor(partner));
+    $('#purchasePartnerItems').textContent=`${countFor(partner)} ${plural(countFor(partner))}`;
+  }
+
+  function voteText(v){return v==='yes'?'Потрібен ✓':v==='no'?'Не потрібен':'Не голосував'}
+  function render(){
+    const all=rows();
+    renderTotals(all);
+    const me=localRole(), partner=me===0?1:0, ps=players();
+    let shown=all;
+    if(filter==='mine')shown=all.filter(x=>Number(x.addedBy)===me);
+    if(filter==='partner')shown=all.filter(x=>Number(x.addedBy)===partner);
+    $('#purchaseCountBadge').textContent=shown.length;
+    document.querySelectorAll('[data-purchase-filter]').forEach(b=>b.classList.toggle('active',b.dataset.purchaseFilter===filter));
+    listEl.innerHTML='';
+    if(!shown.length){listEl.innerHTML='<div class="purchase-empty"><div>🛍️</div><strong>Список поки порожній</strong><span>Додайте перший бажаний товар.</span></div>';return}
+    [...shown].sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0)).forEach(item=>{
+      const addedBy=Number(item.addedBy)===1?1:0;
+      const isMine=addedBy===me;
+      const qty=Math.max(1,Number(item.qty)||1), price=Number(item.price)||0, itemTotal=price*qty;
+      const votes=item.votes&&typeof item.votes==='object'?item.votes:{};
+      const myVote=votes[me]||null, partnerVote=votes[partner]||null;
+      const card=document.createElement('article');card.className='purchase-card'+(myVote==='yes'&&partnerVote==='yes'?' both-want':'');
+      const img=(item.imageUrl&&validHttp(item.imageUrl))?`<img src="${esc(item.imageUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<div class="purchase-image-placeholder">🛍️</div>';
+      const productLink=(item.url&&validHttp(item.url))?`<a class="purchase-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">Відкрити товар ↗</a>`:'';
+      card.innerHTML=`
+        <div class="purchase-image">${img}</div>
+        <div class="purchase-card-body">
+          <div class="purchase-card-top"><span class="purchase-owner ${isMine?'mine':'partner'}">${isMine?'Додали ви':`Додав ${esc(ps[addedBy]?.name||'партнер')}`}</span>${myVote==='yes'&&partnerVote==='yes'?'<span class="purchase-approved">Обом потрібен ✓</span>':''}</div>
+          <h3>${esc(item.name||'Без назви')}</h3>
+          <div class="purchase-price-row"><strong>${fmt(price)}</strong><span>× ${qty}</span><b>${qty>1?`= ${fmt(itemTotal)}`:''}</b></div>
+          ${productLink}
+          <div class="purchase-votes">
+            <div class="purchase-vote-status"><small>Ви</small><strong class="${myVote||'none'}">${voteText(myVote)}</strong></div>
+            <div class="purchase-vote-status"><small>Ваш партнер</small><strong class="${partnerVote||'none'}">${voteText(partnerVote)}</strong></div>
+          </div>
+          <div class="purchase-vote-actions" data-purchase-id="${esc(item.id)}">
+            <button type="button" class="purchase-vote-btn yes ${myVote==='yes'?'active':''}" data-vote="yes">Потрібен</button>
+            <button type="button" class="purchase-vote-btn no ${myVote==='no'?'active':''}" data-vote="no">Не потрібен</button>
+          </div>
+        </div>`;
+      const bad=card.querySelector('img');if(bad)bad.addEventListener('error',()=>{const wrap=bad.parentElement;wrap.innerHTML='<div class="purchase-image-placeholder">🛍️</div>'},{once:true});
+      listEl.appendChild(card);
+    });
+  }
+
+  openBtn?.addEventListener('click',()=>{if(!requireSession())return;form.hidden=false;nameInput?.focus();form.scrollIntoView({behavior:'smooth',block:'start'})});
+  closeBtn?.addEventListener('click',()=>{form.hidden=true});
+  form?.addEventListener('submit',e=>{
+    e.preventDefault();if(!requireSession())return;
+    const name=nameInput.value.trim(), price=Number(priceInput.value), qty=Math.max(1,Math.floor(Number(qtyInput.value)||1));
+    if(!name||!Number.isFinite(price)||price<0)return;
+    const item={id:'purchase_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),name,price,qty,url:urlInput.value.trim(),imageUrl:imageInput.value.trim(),addedBy:localRole(),votes:{},createdAt:Date.now()};
+    const all=rows();all.push(item);save(all,{event:{action:'add',item}});
+    form.reset();qtyInput.value='1';form.hidden=true;
+  });
+  listEl?.addEventListener('click',e=>{
+    const btn=e.target.closest('[data-vote]');if(!btn)return;if(!requireSession())return;
+    const wrap=btn.closest('[data-purchase-id]'),id=wrap?.dataset.purchaseId;if(!id)return;
+    const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
+    const r=localRole(),value=btn.dataset.vote==='yes'?'yes':'no';item.votes ||= {};item.votes[r]=value;
+    save(all,{event:{action:'vote',id,role:r,value}});
+  });
+  document.querySelectorAll('[data-purchase-filter]').forEach(btn=>btn.addEventListener('click',()=>{filter=btn.dataset.purchaseFilter||'all';render()}));
+
+  document.addEventListener('session:remote-ui',e=>{
+    const m=e.detail||{};if(m.kind!=='purchase-action')return;const p=m.payload||{},all=rows();
+    if(p.action==='add'&&p.item&&!all.some(x=>x.id===p.item.id)){all.push(p.item);save(all,{sync:false});return}
+    if(p.action==='vote'){
+      const item=all.find(x=>x.id===p.id);if(!item)return;item.votes ||= {};item.votes[Number(p.role)]=p.value==='yes'?'yes':'no';save(all,{sync:false});
+    }
+  });
+  document.addEventListener('purchases:render',render);
+  document.addEventListener('pair:changed',()=>{if(!section.hidden)render()});
+  document.addEventListener('pair:remote-applied',()=>{if(!section.hidden)render()});
+  render();
+})();
+
 // --- v51: require a fully synchronized partner session for every shared-state mutation ---
 (() => {
   'use strict';
@@ -1918,6 +2043,13 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     // Progress page mutations are wish/debt completion buttons. Pure reading remains available.
     if(target.closest('#progressSection')){
       return !!target.closest('button,input,select,textarea,form');
+    }
+
+    // Desired purchases are shared pair data. Browsing/filtering/link opening is view-only;
+    // adding an item and voting require a synchronized partner session.
+    if(target.closest('#purchasesSection')){
+      if(target.closest('.purchase-filter-btn,.purchase-link,#closePurchaseFormBtn'))return false;
+      return !!target.closest('#openPurchaseFormBtn,#purchaseForm input,#purchaseForm button,.purchase-vote-btn,form');
     }
 
     // Position scratch/reveal/defer/complete mutate shared position state; closing remains view-only.
