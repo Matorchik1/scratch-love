@@ -841,7 +841,7 @@ const pairStorage={
     if(pagePurchaseStatusCount)pagePurchaseStatusCount.textContent=purchaseStats.length;
     if(pagePurchaseStatusList){
       pagePurchaseStatusList.innerHTML='';
-      purchaseStats.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card purchase-stat-card'+(info.purchased?' is-purchased':' is-planned');const qty=Math.max(1,Number(info.qty)||1),total=(Number(info.price)||0)*qty;const safeUrl=(()=>{try{const u=new URL(info.url||'');return (u.protocol==='http:'||u.protocol==='https:')?u.href:''}catch{return ''}})();card.innerHTML=`<div class="game-debt-icon">${info.purchased?'✓':'🗓️'}</div><div class="purchase-stat-main"><strong>${info.name||'Без назви'}</strong><span>${info.purchased?'Придбано':'В планах'} · ${new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(total)} гривень</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.purchasedAt||info.plannedAt||info.updatedAt||info.createdAt||Date.now()))}</small></div>`;const actions=document.createElement('div');actions.className='purchase-stat-actions';if(safeUrl){const a=document.createElement('a');a.className='btn secondary compact purchase-progress-link';a.href=safeUrl;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Відкрити товар ↗';actions.appendChild(a)}if(!info.purchased){const bought=document.createElement('button');bought.type='button';bought.className='btn primary compact purchase-progress-bought';bought.textContent='Позначити як придбано';bought.addEventListener('click',()=>{if(window.requireSyncedPartnerSession&&!window.requireSyncedPartnerSession())return;const all=pageJSON('sa_desired_purchases_v1',[]);const item=all.find(x=>x.id===info.id);if(!item)return;item.purchased=true;item.purchasedBy=window.SessionSync?.role===1?1:0;item.purchasedAt=Date.now();item.planned=false;item.plannedAt=null;item.plannedBy=null;pairStorage.setItem('sa_desired_purchases_v1',JSON.stringify(all));PairDB.save?.();window.SessionSync?.replyUI?.('purchase-action',{action:'purchased',id:item.id,role:item.purchasedBy,value:true,updatedAt:item.purchasedAt});document.dispatchEvent(new CustomEvent('purchases:render'));document.dispatchEvent(new CustomEvent('progress:changed'));renderProgressPage()});actions.appendChild(bought)}if(actions.childElementCount)card.appendChild(actions);pagePurchaseStatusList.appendChild(card)});
+      purchaseStats.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card purchase-stat-card'+(info.purchased?' is-purchased':' is-planned');const qty=Math.max(1,Number(info.qty)||1),total=(Number(info.price)||0)*qty;const safeUrl=(()=>{try{const u=new URL(info.url||'');return (u.protocol==='http:'||u.protocol==='https:')?u.href:''}catch{return ''}})();card.innerHTML=`<div class="game-debt-icon">${info.purchased?'✓':'🗓️'}</div><div class="purchase-stat-main"><strong>${info.name||'Без назви'}</strong><span>${info.purchased?'Придбано':'В планах'} · ${new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(total)} гривень · ${{self:'Для себе',her:'Для неї',both:'Для нас'}[['self','her','both'].includes(info.forWhom)?info.forWhom:'self']}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.purchasedAt||info.plannedAt||info.updatedAt||info.createdAt||Date.now()))}</small></div>`;const actions=document.createElement('div');actions.className='purchase-stat-actions';if(safeUrl){const a=document.createElement('a');a.className='btn secondary compact purchase-progress-link';a.href=safeUrl;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Відкрити товар ↗';actions.appendChild(a)}if(!info.purchased){const bought=document.createElement('button');bought.type='button';bought.className='btn primary compact purchase-progress-bought';bought.textContent='Позначити як придбано';bought.addEventListener('click',()=>{if(window.requireSyncedPartnerSession&&!window.requireSyncedPartnerSession())return;const all=pageJSON('sa_desired_purchases_v1',[]);const item=all.find(x=>x.id===info.id);if(!item)return;item.purchased=true;item.purchasedBy=window.SessionSync?.role===1?1:0;item.purchasedAt=Date.now();item.planned=false;item.plannedAt=null;item.plannedBy=null;pairStorage.setItem('sa_desired_purchases_v1',JSON.stringify(all));PairDB.save?.();window.SessionSync?.replyUI?.('purchase-action',{action:'purchased',id:item.id,role:item.purchasedBy,value:true,updatedAt:item.purchasedAt});document.dispatchEvent(new CustomEvent('purchases:render'));document.dispatchEvent(new CustomEvent('progress:changed'));renderProgressPage()});actions.appendChild(bought)}if(actions.childElementCount)card.appendChild(actions);pagePurchaseStatusList.appendChild(card)});
       if(!purchaseStats.length)pagePurchaseStatusList.innerHTML='<p class="empty-state">Поки немає придбаних або запланованих покупок.</p>';
     }
     // Places planned for later.
@@ -1906,6 +1906,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   const qtyInput=$('#purchaseQtyInput');
   const urlInput=$('#purchaseUrlInput');
   const imageInput=$('#purchaseImageInput');
+  const forInput=$('#purchaseForInput');
   const formTitle=$('#purchaseFormTitle');
   const formEyebrow=$('#purchaseFormEyebrow');
   const submitBtn=$('#purchaseSubmitBtn');
@@ -1923,6 +1924,8 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   const players=()=>PairDB.active?.players||[{name:'Гравець 1'},{name:'Гравець 2'}];
   const localRole=()=>role();
   const fmt=n=>`${new Intl.NumberFormat('uk-UA',{minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(n)||0)} гривень`;
+  const forWhomValue=v=>['self','her','both'].includes(v)?v:'self';
+  const forWhomLabel=v=>({self:'Для себе',her:'Для неї',both:'Для нас'})[forWhomValue(v)];
   const plural=n=>{const a=Math.abs(n)%100,b=a%10;return a>10&&a<20?'товарів':b===1?'товар':b>=2&&b<=4?'товари':'товарів'};
   const validHttp=u=>{try{const x=new URL(u);return x.protocol==='http:'||x.protocol==='https:'}catch{return false}};
   function requireSession(){return window.requireSyncedPartnerSession?window.requireSyncedPartnerSession():!!window.SessionSync?.ready}
@@ -1941,6 +1944,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     qtyInput.value=Math.max(1,Number(item.qty)||1);
     urlInput.value=item.url||'';
     imageInput.value=item.imageUrl||'';
+    if(forInput)forInput.value=['self','her','both'].includes(item.forWhom)?item.forWhom:'self';
     if(formTitle)formTitle.textContent='Редагувати покупку';
     if(formEyebrow)formEyebrow.textContent='РЕДАГУВАННЯ';
     if(submitBtn)submitBtn.textContent='Зберегти зміни';
@@ -1992,7 +1996,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       card.innerHTML=`
         <div class="purchase-image">${img}${item.purchased?'<span class="purchase-bought-overlay">Придбано ✓</span>':''}</div>
         <div class="purchase-card-body">
-          <div class="purchase-card-top"><span class="purchase-owner ${isMine?'mine':'partner'}">${isMine?'Додали ви':`Додав ${esc(ps[addedBy]?.name||'партнер')}`}</span><div class="purchase-card-badges">${myVote==='yes'&&partnerVote==='yes'?'<span class="purchase-approved">Обом потрібен ✓</span>':''}${item.planned&&!item.purchased?'<span class="purchase-plan-badge">В планах</span>':''}${item.purchased?'<span class="purchase-bought-badge">Придбано ✓</span>':''}</div></div>
+          <div class="purchase-card-top"><span class="purchase-owner ${isMine?'mine':'partner'}">${isMine?'Додали ви':`Додав ${esc(ps[addedBy]?.name||'партнер')}`}</span><div class="purchase-card-badges"><span class="purchase-for-badge ${forWhomValue(item.forWhom)}">${forWhomLabel(item.forWhom)}</span>${myVote==='yes'&&partnerVote==='yes'?'<span class="purchase-approved">Обом потрібен ✓</span>':''}${item.planned&&!item.purchased?'<span class="purchase-plan-badge">В планах</span>':''}${item.purchased?'<span class="purchase-bought-badge">Придбано ✓</span>':''}</div></div>
           <div class="purchase-title-row"><h3>${esc(item.name||'Без назви')}</h3>${isMine?`<div class="purchase-owner-actions"><button type="button" class="purchase-edit-btn" data-edit-purchase="${esc(item.id)}">Редагувати</button><button type="button" class="purchase-delete-btn" data-delete-purchase="${esc(item.id)}">Видалити</button></div>`:''}</div>
           <div class="purchase-price-row"><strong>${fmt(price)}</strong><span>× ${qty}</span><b>${qty>1?`= ${fmt(itemTotal)}`:''}</b></div>
           ${productLink}
@@ -2023,23 +2027,23 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     });
   }
 
-  openBtn?.addEventListener('click',()=>{if(!requireSession())return;form.reset();qtyInput.value='1';resetFormMode();form.hidden=false;nameInput?.focus();form.scrollIntoView({behavior:'smooth',block:'start'})});
-  closeBtn?.addEventListener('click',()=>{form.hidden=true;form.reset();qtyInput.value='1';resetFormMode()});
+  openBtn?.addEventListener('click',()=>{if(!requireSession())return;form.reset();qtyInput.value='1';if(forInput)forInput.value='self';resetFormMode();form.hidden=false;nameInput?.focus();form.scrollIntoView({behavior:'smooth',block:'start'})});
+  closeBtn?.addEventListener('click',()=>{form.hidden=true;form.reset();qtyInput.value='1';if(forInput)forInput.value='self';resetFormMode()});
   form?.addEventListener('submit',e=>{
     e.preventDefault();if(!requireSession())return;
-    const name=nameInput.value.trim(), price=Number(priceInput.value), qty=Math.max(1,Math.floor(Number(qtyInput.value)||1));
+    const name=nameInput.value.trim(), price=Number(priceInput.value), qty=Math.max(1,Math.floor(Number(qtyInput.value)||1)), forWhom=forWhomValue(forInput?.value);
     if(!name||!Number.isFinite(price)||price<0)return;
     const all=rows();
     if(editingId){
       const item=all.find(x=>x.id===editingId);if(!item||Number(item.addedBy)!==localRole())return;
-      item.name=name;item.price=price;item.qty=qty;item.url=urlInput.value.trim();item.imageUrl=imageInput.value.trim();item.updatedAt=Date.now();
-      const patch={name:item.name,price:item.price,qty:item.qty,url:item.url,imageUrl:item.imageUrl,updatedAt:item.updatedAt};
+      item.name=name;item.price=price;item.qty=qty;item.url=urlInput.value.trim();item.imageUrl=imageInput.value.trim();item.forWhom=forWhom;item.updatedAt=Date.now();
+      const patch={name:item.name,price:item.price,qty:item.qty,url:item.url,imageUrl:item.imageUrl,forWhom:item.forWhom,updatedAt:item.updatedAt};
       save(all,{event:{action:'edit',id:item.id,role:localRole(),patch}});
     }else{
-      const item={id:'purchase_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),name,price,qty,url:urlInput.value.trim(),imageUrl:imageInput.value.trim(),addedBy:localRole(),votes:{},createdAt:Date.now()};
+      const item={id:'purchase_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),name,price,qty,url:urlInput.value.trim(),imageUrl:imageInput.value.trim(),forWhom,addedBy:localRole(),votes:{},createdAt:Date.now()};
       all.push(item);save(all,{event:{action:'add',item}});
     }
-    form.reset();qtyInput.value='1';form.hidden=true;resetFormMode();
+    form.reset();qtyInput.value='1';if(forInput)forInput.value='self';form.hidden=true;resetFormMode();
   });
   listEl?.addEventListener('click',e=>{
     const editBtn=e.target.closest('[data-edit-purchase]');
@@ -2112,6 +2116,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       item.qty=Math.max(1,Math.floor(Number(patch.qty)||1));
       item.url=String(patch.url??item.url??'');
       item.imageUrl=String(patch.imageUrl??item.imageUrl??'');
+      item.forWhom=forWhomValue(patch.forWhom??item.forWhom);
       item.updatedAt=Number(patch.updatedAt)||Date.now();
       save(all,{sync:false});return
     }
@@ -2237,7 +2242,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     // adding an item and voting require a synchronized partner session.
     if(target.closest('#purchasesSection')){
       if(target.closest('.purchase-filter-btn,.purchase-link,#closePurchaseFormBtn'))return false;
-      return !!target.closest('#openPurchaseFormBtn,#purchaseForm input,#purchaseForm button,.purchase-vote-btn,.purchase-priority-btn,.purchase-edit-btn,.purchase-delete-btn,.purchase-bought-btn,.purchase-plan-btn,form');
+      return !!target.closest('#openPurchaseFormBtn,#purchaseForm input,#purchaseForm select,#purchaseForm button,.purchase-vote-btn,.purchase-priority-btn,.purchase-edit-btn,.purchase-delete-btn,.purchase-bought-btn,.purchase-plan-btn,form');
     }
 
     // Position scratch/reveal/defer/complete mutate shared position state; closing remains view-only.

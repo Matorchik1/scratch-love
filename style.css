@@ -1361,3 +1361,43 @@ img,canvas,svg{max-width:100%}
   .planning-approval-modal{padding:10px!important;align-items:end!important}
   .planning-approval-dialog{border-radius:26px 26px 18px 18px!important;padding:20px 15px 16px!important}
 }
+
+/* v61: purchase recipient */
+.purchase-field select{
+  min-height:46px;
+  width:100%;
+  border-radius:13px;
+  border:1px solid rgba(255,255,255,.09);
+  background:#100d13;
+  color:#fff;
+  padding:0 38px 0 13px;
+  font:inherit;
+  outline:none;
+  appearance:none;
+  background-image:
+    linear-gradient(45deg,transparent 50%,#b9aeb8 50%),
+    linear-gradient(135deg,#b9aeb8 50%,transparent 50%);
+  background-position:calc(100% - 17px) 20px,calc(100% - 12px) 20px;
+  background-size:5px 5px,5px 5px;
+  background-repeat:no-repeat;
+}
+.purchase-field select:focus{border-color:rgba(255,87,151,.48);box-shadow:0 0 0 3px rgba(255,80,145,.08)}
+.purchase-for-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  padding:5px 8px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:900;
+  white-space:nowrap;
+  border:1px solid rgba(255,255,255,.07);
+  background:rgba(255,255,255,.045);
+  color:#ded4dc;
+}
+.purchase-for-badge.self{color:#ffadd0;background:rgba(255,88,151,.09);border-color:rgba(255,88,151,.16)}
+.purchase-for-badge.her{color:#c8b8ff;background:rgba(135,111,255,.10);border-color:rgba(135,111,255,.18)}
+.purchase-for-badge.both{color:#ffd39b;background:rgba(255,188,92,.09);border-color:rgba(255,188,92,.18)}
+@media(max-width:900px){.purchase-for-field{grid-column:auto}}
+@media(max-width:620px){.purchase-for-field{grid-column:1/-1}}
+@media(max-width:420px){.purchase-for-field{grid-column:auto}}

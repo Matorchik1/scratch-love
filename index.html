@@ -187,6 +187,7 @@
           <label class="purchase-field purchase-title-field"><span>Назва товару</span><input id="purchaseNameInput" required maxlength="120" placeholder="Наприклад: Навушники"></label>
           <label class="purchase-field"><span>Ціна</span><input id="purchasePriceInput" required type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></label>
           <label class="purchase-field"><span>Кількість</span><input id="purchaseQtyInput" required type="number" min="1" step="1" inputmode="numeric" value="1"></label>
+          <label class="purchase-field purchase-for-field"><span>Для кого</span><select id="purchaseForInput" required><option value="self">Для себе</option><option value="her">Для неї</option><option value="both">Для нас</option></select></label>
           <label class="purchase-field purchase-wide"><span>Посилання на товар</span><input id="purchaseUrlInput" type="url" placeholder="https://..."></label>
           <label class="purchase-field purchase-wide"><span>Посилання на картинку</span><input id="purchaseImageInput" type="url" placeholder="https://..."></label>
         </div>
@@ -534,6 +535,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js?v=27"></script>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="app.js?v=60"></script>
+  <script src="app.js?v=61"></script>
 </body>
 </html>
