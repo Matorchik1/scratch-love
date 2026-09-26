@@ -319,10 +319,15 @@ const pairStorage={
     els.canvas.style.opacity = '1'; els.canvas.style.pointerEvents = 'auto'; revealedNow = false;
   }
 
-  function scratch(e){
-    const r = els.canvas.getBoundingClientRect();
-    const x = e.clientX - r.left, y = e.clientY - r.top;
-    ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); ctx.arc(x,y,32,0,Math.PI*2); ctx.fill();
+  function scratchPoint(nx,ny,radius=32){
+    const r=els.canvas.getBoundingClientRect(),x=nx*r.width,y=ny*r.height;
+    ctx.globalCompositeOperation='destination-out';ctx.beginPath();ctx.arc(x,y,radius,0,Math.PI*2);ctx.fill();
+  }
+  let lastScratchSync=0;
+  function scratch(e,sync=true){
+    const r=els.canvas.getBoundingClientRect();const nx=(e.clientX-r.left)/Math.max(1,r.width),ny=(e.clientY-r.top)/Math.max(1,r.height);
+    scratchPoint(nx,ny,32);
+    const now=performance.now();if(sync&&now-lastScratchSync>32){lastScratchSync=now;window.SessionSync?.sendUI?.('pose-scratch',{id:current?.id,nx,ny,radius:32});}
   }
 
   function scratchedRatio(){
@@ -339,7 +344,7 @@ const pairStorage={
     els.poseMeta.hidden = !visible;
   }
 
-  function reveal(save=true){
+  function reveal(save=true,syncSession=true){
     if(!current) return;
     revealedNow = true; els.canvas.style.opacity = '0'; els.canvas.style.pointerEvents = 'none';
     if(save){ const set = readSet(REVEALED_KEY); set.add(current.id); saveSet(REVEALED_KEY,set); }
@@ -349,10 +354,11 @@ const pairStorage={
     if(els.defer){ els.defer.disabled = done || !!deferredInfo; els.defer.textContent = deferredInfo ? 'Вже відкладено' : 'Відкласти'; }
     els.instruction.textContent = done ? 'Цю позицію вже виконано.' : deferredInfo ? (deferredInfo.wishDone ? 'Поза відкладена. Бажання вже виконано ✓' : `Поза відкладена. ${deferredInfo.debtorName} має виконати бажання партнера.`) : 'Позиція відкрита. Після виконання натисніть «Виконано» або відкладіть її.';
     updatePositionMeta(current, true);
+    if(syncSession)window.SessionSync?.sendUI?.('pose-reveal',{id:current.id});
     render();
   }
 
-  function openPosition(item,globalIndex,catIndex,localIndex,isDone){
+  function openPosition(item,globalIndex,catIndex,localIndex,isDone,syncSession=true){
     current = item; currentGlobalIndex = globalIndex; currentCategoryIndex = catIndex;
     els.categoryTitle.textContent = CATEGORIES[catIndex].name.toUpperCase();
     els.dayTitle.textContent = `Поза ${item.order_index}`;
@@ -366,7 +372,8 @@ const pairStorage={
     if(els.defer){ els.defer.disabled = !alreadyRevealed || isDone || !!deferredInfo; els.defer.textContent = deferredInfo ? 'Вже відкладено' : 'Відкласти'; }
     els.instruction.textContent = isDone ? 'Цю позицію вже виконано.' : deferredInfo ? (deferredInfo.wishDone ? 'Поза відкладена. Бажання вже виконано ✓' : `Поза відкладена. ${deferredInfo.debtorName} має виконати бажання партнера.`) : alreadyRevealed ? 'Позиція відкрита. Після виконання натисніть «Виконано» або відкладіть її.' : 'Зітріть захисний шар, щоб відкрити позицію.';
     updatePositionMeta(item, alreadyRevealed || isDone);
-    requestAnimationFrame(() => alreadyRevealed ? reveal(false) : drawCover());
+    requestAnimationFrame(() => alreadyRevealed ? reveal(false,false) : drawCover());
+    if(syncSession)window.SessionSync?.sendUI?.('pose-open',{id:item.id});
   }
 
   els.canvas.addEventListener('pointerdown', e => { drawing = true; els.canvas.setPointerCapture?.(e.pointerId); scratch(e); });
@@ -461,6 +468,15 @@ const pairStorage={
   els.leaveSite.addEventListener('click', () => { document.body.innerHTML = '<main class="leave"><h1>18+</h1><p>Сторінку закрито.</p></main>'; });
   window.addEventListener('resize', () => { if(els.dialog.open && current && !revealedNow) drawCover(); });
 
+  document.addEventListener('session:remote-ui',e=>{
+    const m=e.detail||{},p=m.payload||{};
+    if(m.kind==='pose-open'){
+      const item=ITEMS.find(x=>String(x.id)===String(p.id));if(!item)return;const loc=findItemLocation(item);openPosition(item,loc.globalIndex,loc.catIndex,loc.localIndex,readSet(DONE_KEY).has(item.id),false);
+      if(!readSet(REVEALED_KEY).has(item.id)&&!readSet(DONE_KEY).has(item.id))requestAnimationFrame(()=>drawCover());
+    }
+    if(m.kind==='pose-scratch'&&current&&String(current.id)===String(p.id)){scratchPoint(Number(p.nx)||0,Number(p.ny)||0,Number(p.radius)||32);}
+    if(m.kind==='pose-reveal'&&current&&String(current.id)===String(p.id)){reveal(true,false);}
+  });
   document.addEventListener('pair:changed',()=>render());
   if(PairDB.active) render();
 })();
@@ -773,10 +789,12 @@ const pairStorage={
       const n=this.pool.length,c=((this.current%n)+n)%n;
       this.renderSequence([this.pool[(c-1+n)%n],this.pool[c],this.pool[(c+1)%n]],0,false);
     }
-    spin(){
+    spinTo(value=null){
       if(this.busy || !this.pool.length) return Promise.reject(new Error('busy'));
       this.busy=true; this.root?.classList.add('is-spinning');
-      const target=Math.floor(Math.random()*this.pool.length), sequence=[];
+      let target=value===null?Math.floor(Math.random()*this.pool.length):this.pool.indexOf(value);
+      if(target<0) target=Math.floor(Math.random()*this.pool.length);
+      const sequence=[];
       for(let i=0;i<24;i++) sequence.push(this.pool[(this.current+i)%this.pool.length]);
       sequence.push(this.pool[(target-1+this.pool.length)%this.pool.length],this.pool[target],this.pool[(target+1)%this.pool.length]);
       const targetIndex=sequence.length-2; this.renderSequence(sequence,targetIndex,true);
@@ -784,6 +802,7 @@ const pairStorage={
         this.current=target; this.busy=false; this.root?.classList.remove('is-spinning'); this.reset(); resolve(this.pool[target]);
       },1700));
     }
+    spin(){ return this.spinTo(null); }
   }
 
   const bodyPoolForTarget=()=>{
@@ -910,37 +929,21 @@ const pairStorage={
     if(randomPoseCaption) randomPoseCaption.textContent=item.poseTitle || ('Поза ' + item.order_index);
   }
   function resetRandomPosePreview(){ const pool=getRandomPosePool(); if(randomPoseResultBox)randomPoseResultBox.hidden=true; setRandomPose(pool.includes(randomPoseCurrent)?randomPoseCurrent:(pool[0]||RANDOM_POSITIONS[0])); }
-  $('#randomPoseSpinBtn')?.addEventListener('click',async e=>{
-    const pool=getRandomPosePool();
-    if(randomPoseBusy||!pool.length)return;
-    const button=e.currentTarget; randomPoseBusy=true; if(button)button.disabled=true; if(randomPoseResultBox)randomPoseResultBox.hidden=true;
+  async function runRandomPoseSpin(forcedOrder=null,remote=false){
+    const pool=getRandomPosePool();if(randomPoseBusy||!pool.length)return;
+    const button=$('#randomPoseSpinBtn');randomPoseBusy=true;if(button)button.disabled=true;if(randomPoseResultBox)randomPoseResultBox.hidden=true;
     try{
-      // Decode the selected pose set before the animation starts. This prevents
-      // blank/flickering frames while the center image is changing rapidly.
       await preloadPosePool(pool);
-      const target=pool[Math.floor(Math.random()*pool.length)];
+      const target=(forcedOrder?pool.find(x=>Number(x.order_index)===Number(forcedOrder)):null)||pool[Math.floor(Math.random()*pool.length)];
+      if(!remote)window.SessionSync?.sendUI?.('game-action',{action:'random-pose-spin',order:target.order_index});
       fortuneTurns+=5+Math.floor(Math.random()*3);
-      if(fortuneWheelRotor){ fortuneWheelRotor.style.transition='transform 3.15s cubic-bezier(.08,.72,.08,1)'; fortuneWheelRotor.style.transform=`rotate(${fortuneTurns*360 + Math.floor(Math.random()*340)}deg)`; }
-      const frames=[...pool].sort(()=>Math.random()-.5);
-      let frameIndex=0;
-      const start=performance.now(), duration=3050;
-      await new Promise(resolve=>{
-        const tick=now=>{
-          const t=Math.min(1,(now-start)/duration); const delay=55+Math.floor(210*t*t);
-          const item=frames[frameIndex++%frames.length];
-          setRandomPose(item);
-          if(t>=1){resolve();return} setTimeout(()=>requestAnimationFrame(tick),delay);
-        }; requestAnimationFrame(tick);
-      });
-      setRandomPose(target);
-      if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${target.order_index}`;
-      if(randomPoseResult)randomPoseResult.textContent=target.poseTitle || (`Поза ${target.order_index}`);
-      if(randomPoseDescription)randomPoseDescription.textContent=target.poseDescription || '';
-      if(randomPoseResultBox)randomPoseResultBox.hidden=false;
-    }finally{
-      randomPoseBusy=false; if(button)button.disabled=false;
-    }
-  });
+      if(fortuneWheelRotor){fortuneWheelRotor.style.transition='transform 3.15s cubic-bezier(.08,.72,.08,1)';fortuneWheelRotor.style.transform=`rotate(${fortuneTurns*360 + Math.floor(Math.random()*340)}deg)`;}
+      const frames=[...pool].sort(()=>Math.random()-.5);let frameIndex=0;const start=performance.now(),duration=3050;
+      await new Promise(resolve=>{const tick=now=>{const t=Math.min(1,(now-start)/duration),delay=55+Math.floor(210*t*t);setRandomPose(frames[frameIndex++%frames.length]);if(t>=1){resolve();return}setTimeout(()=>requestAnimationFrame(tick),delay)};requestAnimationFrame(tick)});
+      setRandomPose(target);if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${target.order_index}`;if(randomPoseResult)randomPoseResult.textContent=target.poseTitle||(`Поза ${target.order_index}`);if(randomPoseDescription)randomPoseDescription.textContent=target.poseDescription||'';if(randomPoseResultBox)randomPoseResultBox.hidden=false;
+    }finally{randomPoseBusy=false;if(button)button.disabled=false}
+  }
+  $('#randomPoseSpinBtn')?.addEventListener('click',()=>runRandomPoseSpin());
   $('#randomPoseOpenBtn')?.addEventListener('click',()=>{
     if(!randomPoseCurrent)return;
     const dlg=document.createElement('dialog'); dlg.className='dialog random-pose-zoom-dialog';
@@ -964,41 +967,37 @@ const pairStorage={
   }
 
   const pbox=$('#passionResultBox');
-  $('#passionRollBtn')?.addEventListener('click',async e=>{
+  async function runPassionRoll(forced=null,remote=false){
     if(rolling)return;
-    const button=e.currentTarget; // currentTarget стає null після await у деяких браузерах/file://
-    rolling=true; if(button) button.disabled=true; if(pbox) pbox.hidden=true;
-    refreshBodyPools();
+    const button=$('#passionRollBtn'); rolling=true; if(button)button.disabled=true;if(pbox)pbox.hidden=true;refreshBodyPools();
     try{
-      const [action,body]=await Promise.all([passionActionSlot.spin(),passionBodySlot.spin()]);
-      showResult('passion',`${action} — ${body}`,$('#passionTurnLabel'),$('#passionResult'),pbox);
-    } catch(err) {
-      console.error(err);
-    } finally {
-      rolling=false; if(button) button.disabled=false;
-    }
-  });
+      const action=forced?.action || actionPool()[Math.floor(Math.random()*actionPool().length)];
+      const bp=bodyPoolForTarget(); const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
+      if(!remote) window.SessionSync?.sendUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body});
+      const [a,b]=await Promise.all([passionActionSlot.spinTo(action),passionBodySlot.spinTo(body)]);
+      showResult('passion',`${a} — ${b}`,$('#passionTurnLabel'),$('#passionResult'),pbox);
+    }catch(err){console.error(err)}finally{rolling=false;if(button)button.disabled=false}
+  }
+  $('#passionRollBtn')?.addEventListener('click',()=>runPassionRoll());
   $('#passionDoneBtn')?.addEventListener('click',()=>{resolveResult(true);if(pbox)pbox.hidden=true});
   $('#passionNoBtn')?.addEventListener('click',()=>{resolveResult(false);if(pbox)pbox.hidden=true});
 
   $$('#directActionChoice .choice-btn').forEach(btn=>btn.addEventListener('click',()=>{
     $$('#directActionChoice .choice-btn').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); directAction=btn.dataset.action;
+    window.SessionSync?.sendUI?.('game-action',{action:'direct-choice',directAction});
   }));
   const dbox=$('#directResultBox');
-  $('#directRollBtn')?.addEventListener('click',async e=>{
-    if(rolling)return;
-    const button=e.currentTarget;
-    rolling=true; if(button) button.disabled=true; if(dbox) dbox.hidden=true;
-    refreshBodyPools();
+  async function runDirectRoll(forced=null,remote=false){
+    if(rolling)return;const button=$('#directRollBtn');rolling=true;if(button)button.disabled=true;if(dbox)dbox.hidden=true;refreshBodyPools();
     try{
-      const body=await directBodySlot.spin();
-      showResult('direct',`${directAction} — ${body}`,$('#directTurnLabel'),$('#directResult'),dbox);
-    } catch(err) {
-      console.error(err);
-    } finally {
-      rolling=false; if(button) button.disabled=false;
-    }
-  });
+      if(forced?.directAction) directAction=forced.directAction;
+      document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));
+      const bp=bodyPoolForTarget();const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
+      if(!remote)window.SessionSync?.sendUI?.('game-action',{action:'direct-roll',directAction,body});
+      const b=await directBodySlot.spinTo(body);showResult('direct',`${directAction} — ${b}`,$('#directTurnLabel'),$('#directResult'),dbox);
+    }catch(err){console.error(err)}finally{rolling=false;if(button)button.disabled=false}
+  }
+  $('#directRollBtn')?.addEventListener('click',()=>runDirectRoll());
   $('#directDoneBtn')?.addEventListener('click',()=>{resolveResult(true);if(dbox)dbox.hidden=true});
   $('#directNoBtn')?.addEventListener('click',()=>{resolveResult(false);if(dbox)dbox.hidden=true});
 
@@ -1009,6 +1008,13 @@ const pairStorage={
     if(m.kind==='tab'&&m.payload?.which) showTab(m.payload.which,false);
     if(m.kind==='game'&&m.payload?.key) openGame(m.payload.key,false);
     if(m.kind==='game-menu') showGamesMenu(false,true);
+    if(m.kind==='game-action'){
+      const a=m.payload?.action;
+      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue},true);}
+      if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
+      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body},true);}
+      if(a==='random-pose-spin'){openGame('randomPose',false);runRandomPoseSpin(m.payload.order,true);}
+    }
   });
   if(PairDB.active) refreshPairUI();
 })();
@@ -1099,10 +1105,12 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
   // scenario reels
   const scenarios=['Романтика','Швидко','Повільно','Без слів','Із зав’язаними очима','У новому місці','Тільки поцілунки']; const durations=['2 хв','5 хв','10 хв','15 хв','20 хв']; let scenMode='duration';
-  function simpleReel(el,items){if(!el)return;const track=el.querySelector('.slot-track');let idx=Math.floor(Math.random()*items.length);function draw(){track.innerHTML=[-1,0,1].map(o=>`<div class="slot-item ${o===0?'active':''}">${escapeHtml(items[(idx+o+items.length)%items.length])}</div>`).join('')}draw();return {setItems(a){items=a;idx%=Math.max(a.length,1);draw()},spin(){return new Promise(res=>{let steps=18+Math.floor(Math.random()*10),i=0;const t=setInterval(()=>{idx=(idx+1)%items.length;draw();if(++i>=steps){clearInterval(t);res(items[idx])}},70+i*3)})}}}
+  function simpleReel(el,items){if(!el)return;const track=el.querySelector('.slot-track');let idx=Math.floor(Math.random()*items.length);function draw(){track.innerHTML=[-1,0,1].map(o=>`<div class="slot-item ${o===0?'active':''}">${escapeHtml(items[(idx+o+items.length)%items.length])}</div>`).join('')}draw();return {setItems(a){items=a;idx%=Math.max(a.length,1);draw()},spinTo(value=null){return new Promise(res=>{const target=value==null?Math.floor(Math.random()*items.length):Math.max(0,items.indexOf(value));let steps=18+Math.floor(Math.random()*10),i=0;const t=setInterval(()=>{idx=(idx+1)%items.length;draw();if(++i>=steps){clearInterval(t);idx=target;draw();res(items[idx])}},70+i*3)})},spin(){return this.spinTo(null)}}}
   const scenReel=simpleReel($('#scenarioMainReel'),scenarios), secondReel=simpleReel($('#scenarioSecondReel'),durations);
   $('#scenarioSecondType')?.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(!b)return;scenMode=b.dataset.mode;$('#scenarioSecondType').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));const arr=scenMode==='duration'?durations:allPlaces();secondReel?.setItems(arr.length?arr:['Ваше місце']);$('#scenarioSecondLabel').textContent=scenMode==='duration'?'Тривалість':'Місце'});
-  $('#scenarioRollBtn')?.addEventListener('click',async()=>{const a=await scenReel.spin(),b=await secondReel.spin(),box=$('#scenarioResult');box.hidden=false;box.innerHTML=`<small>Ваш сценарій</small><strong>${a} — ${b}</strong>`});
+  async function runScenarioRoll(forced=null,remote=false){const secondItems=scenMode==='duration'?durations:allPlaces();if(forced?.mode){scenMode=forced.mode;document.querySelectorAll('#scenarioSecondType [data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===scenMode));secondReel?.setItems(scenMode==='duration'?durations:(allPlaces().length?allPlaces():['Ваше місце']));if($('#scenarioSecondLabel'))$('#scenarioSecondLabel').textContent=scenMode==='duration'?'Тривалість':'Місце'}const aTarget=forced?.a||scenarios[Math.floor(Math.random()*scenarios.length)], pool=scenMode==='duration'?durations:(allPlaces().length?allPlaces():['Ваше місце']), bTarget=forced?.b||pool[Math.floor(Math.random()*pool.length)];if(!remote)window.SessionSync?.sendUI?.('game-action',{action:'scenario-roll',mode:scenMode,a:aTarget,b:bTarget});const [a,b]=await Promise.all([scenReel.spinTo(aTarget),secondReel.spinTo(bTarget)]),box=$('#scenarioResult');box.hidden=false;box.innerHTML=`<small>Ваш сценарій</small><strong>${a} — ${b}</strong>`}
+  $('#scenarioRollBtn')?.addEventListener('click',()=>runScenarioRoll());
+  document.addEventListener('session:remote-ui',e=>{const m=e.detail||{};if(m.kind!=='game-action')return;const p=m.payload||{};if(p.action==='scenario-roll')runScenarioRoll(p,true);});
   // 5 minutes
   const fiveModes=['Тільки дотики','Тільки поцілунки','Без рук','Один керує','Повільний темп','Без слів'];let fiveSec=300,fiveTimerId=null,fiveMode=fiveModes[0];
   function fiveDraw(){if($('#fiveTimer'))$('#fiveTimer').textContent=`${String(Math.floor(fiveSec/60)).padStart(2,'0')}:${String(fiveSec%60).padStart(2,'0')}`;if($('#fiveMode'))$('#fiveMode').textContent=fiveMode}
