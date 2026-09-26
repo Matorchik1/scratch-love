@@ -37,6 +37,15 @@
         </div>
         <button class="btn primary" id="createPairBtn" type="button">Створити пару</button>
       </div>
+      <div class="pair-backup">
+        <h2>Перенесення між пристроями</h2>
+        <p>Експортуйте всі профілі пар та їхній прогрес у JSON-файл, а на іншому пристрої імпортуйте цей файл.</p>
+        <div class="pair-backup-actions">
+          <button class="btn secondary" id="exportDbBtn" type="button">Вивантажити базу</button>
+          <button class="btn secondary" id="importDbBtn" type="button">Завантажити базу</button>
+          <input id="importDbFile" type="file" accept="application/json,.json" hidden>
+        </div>
+      </div>
     </div>
   </div>
 

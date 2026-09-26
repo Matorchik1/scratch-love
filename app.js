@@ -10,6 +10,22 @@ const PairDB = (() => {
   async function setMeta(key,value){return req(tx(META,'readwrite').put({key,value}))}
   async function put(pair){await req(tx(STORE,'readwrite').put(pair));}
   async function remove(id){await req(tx(STORE,'readwrite').delete(id));if(active?.id===id){active=null;await setMeta('activePairId',null)}}
+  async function exportAll(){
+    const pairs=await list();
+    const activePairId=active?.id || await getMeta('activePairId');
+    return {format:'scratch-love-backup',version:1,exportedAt:new Date().toISOString(),activePairId,pairs};
+  }
+  async function importAll(payload){
+    if(!payload || payload.format!=='scratch-love-backup' || !Array.isArray(payload.pairs)) throw new Error('Невірний формат резервної копії');
+    for(const pair of payload.pairs){
+      if(!pair || typeof pair.id!=='string' || !Array.isArray(pair.players)) continue;
+      pair.state ||= freshState(); pair.state.calendar ||= {}; pair.state.games ||= {}; pair.state.ui ||= {}; pair.state.kv ||= {};
+      await put(pair);
+    }
+    const preferred = payload.activePairId && payload.pairs.some(p=>p?.id===payload.activePairId) ? payload.activePairId : payload.pairs[0]?.id;
+    if(preferred) await activate(preferred);
+    return payload.pairs.length;
+  }
   function freshState(){return {calendar:{},games:{},ui:{}}}
   async function create(p1,g1,p2,g2){const n1=p1||'Гравець 1',n2=p2||'Гравець 2',gg1=g1||'male',gg2=g2||'female';const pair={id:'pair_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),players:[{name:n1,gender:gg1},{name:n2,gender:gg2}],state:{calendar:{},games:{},ui:{},kv:{sa_games_player_names_v1:JSON.stringify([n1,n2]),sa_games_player_genders_v1:JSON.stringify([gg1,gg2])}},createdAt:Date.now()};await put(pair);await activate(pair.id);return pair}
   async function activate(id){active=await req(tx(STORE).get(id));if(!active)return null;active.state ||= freshState();active.state.calendar ||= {};active.state.games ||= {};active.state.ui ||= {};await setMeta('activePairId',id);document.dispatchEvent(new CustomEvent('pair:changed',{detail:active}));return active}
@@ -18,7 +34,7 @@ const PairDB = (() => {
   function setKV(key,value){if(!active)return;active.state.kv ||= {};active.state.kv[key]=value;scheduleSave()}
   function removeKV(key){if(!active?.state?.kv)return;delete active.state.kv[key];scheduleSave()}
   async function init(){await open();const id=await getMeta('activePairId');if(id)active=await req(tx(STORE).get(id));return active}
-  return {init,list,create,activate,remove,get active(){return active},save:()=>active?put(active):Promise.resolve(),getKV,setKV,removeKV};
+  return {init,list,create,activate,remove,exportAll,importAll,get active(){return active},save:()=>active?put(active):Promise.resolve(),getKV,setKV,removeKV};
 })();
 
 const pairStorage={
@@ -829,6 +845,32 @@ const pairStorage={
   $('#createPairBtn')?.addEventListener('click',async()=>{
     const p1=$('#newPairP1').value.trim()||'Гравець 1', p2=$('#newPairP2').value.trim()||'Гравець 2';
     await PairDB.create(p1,$('#newPairG1').value,p2,$('#newPairG2').value); showApp();
+  });
+  $('#exportDbBtn')?.addEventListener('click',async()=>{
+    try{
+      await PairDB.save();
+      const backup=await PairDB.exportAll();
+      const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement('a');
+      const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+      a.href=url; a.download=`scratch-love-backup-${stamp}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(err){console.error(err);alert('Не вдалося експортувати базу.');}
+  });
+  $('#importDbBtn')?.addEventListener('click',()=>$('#importDbFile')?.click());
+  $('#importDbFile')?.addEventListener('change',async e=>{
+    const file=e.target.files?.[0]; if(!file)return;
+    try{
+      const payload=JSON.parse(await file.text());
+      if(!confirm('Імпортувати резервну копію? Профілі з однаковими ID будуть оновлені даними з файлу.')){e.target.value='';return;}
+      const count=await PairDB.importAll(payload);
+      await renderList();
+      if(PairDB.active) showApp(); else showGate();
+      alert(`Імпортовано профілів: ${count}`);
+    }catch(err){console.error(err);alert('Не вдалося імпортувати файл. Перевірте, що це резервна копія Scratch Love.');}
+    e.target.value='';
   });
   document.addEventListener('pair:changed',e=>{if(e.detail)label.textContent=pairLabel(e.detail)});document.addEventListener('pair:profile',()=>{if(PairDB.active)label.textContent=pairLabel(PairDB.active)});
   (async()=>{try{const p=await PairDB.init();if(p){document.dispatchEvent(new CustomEvent('pair:changed',{detail:p}));showApp()}else showGate()}catch(err){console.error(err);gate.hidden=false;listEl.innerHTML='<div class="pair-list-empty">Не вдалося відкрити IndexedDB. Запустіть сайт через локальний веб-сервер (localhost), а не в приватному режимі.</div>'}})();
