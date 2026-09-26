@@ -28,13 +28,14 @@ const PairDB = (() => {
   }
   function freshState(){return {calendar:{},games:{},ui:{}}}
   async function create(p1,g1,p2,g2){const n1=p1||'Гравець 1',n2=p2||'Гравець 2',gg1=g1||'male',gg2=g2||'female';const pair={id:'pair_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),players:[{name:n1,gender:gg1},{name:n2,gender:gg2}],state:{calendar:{},games:{},ui:{},kv:{sa_games_player_names_v1:JSON.stringify([n1,n2]),sa_games_player_genders_v1:JSON.stringify([gg1,gg2])}},createdAt:Date.now()};await put(pair);await activate(pair.id);return pair}
-  async function activate(id){active=await req(tx(STORE).get(id));if(!active)return null;active.state ||= freshState();active.state.calendar ||= {};active.state.games ||= {};active.state.ui ||= {};await setMeta('activePairId',id);document.dispatchEvent(new CustomEvent('pair:changed',{detail:active}));return active}
-  function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{if(active)put(active)},60)}
+  async function activate(id){active=await req(tx(STORE).get(id));if(!active)return null;active.state ||= freshState();active.state.calendar ||= {};active.state.games ||= {};active.state.ui ||= {};active.state.kv ||= {};await setMeta('activePairId',id);document.dispatchEvent(new CustomEvent('pair:changed',{detail:active}));return active}
+  async function applyRemote(pair){if(!pair?.id)return;active=JSON.parse(JSON.stringify(pair));active.state ||= freshState();active.state.kv ||= {};await put(active);await setMeta('activePairId',active.id);document.dispatchEvent(new CustomEvent('pair:changed',{detail:active}));document.dispatchEvent(new CustomEvent('pair:remote-applied',{detail:active}));}
+  function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{if(active){await put(active);document.dispatchEvent(new CustomEvent('pair:state-saved',{detail:active}))}},60)}
   function getKV(key){return active?.state?.kv?.[key]??null}
   function setKV(key,value){if(!active)return;active.state.kv ||= {};active.state.kv[key]=value;scheduleSave()}
   function removeKV(key){if(!active?.state?.kv)return;delete active.state.kv[key];scheduleSave()}
   async function init(){await open();const id=await getMeta('activePairId');if(id)active=await req(tx(STORE).get(id));return active}
-  return {init,list,create,activate,remove,exportAll,importAll,get active(){return active},save:()=>active?put(active):Promise.resolve(),getKV,setKV,removeKV};
+  return {init,list,create,activate,remove,exportAll,importAll,applyRemote,get active(){return active},save:async()=>{if(active){await put(active);document.dispatchEvent(new CustomEvent('pair:state-saved',{detail:active}))}},getKV,setKV,removeKV};
 })();
 
 const pairStorage={
@@ -80,7 +81,7 @@ const pairStorage={
     allDialog: $('#allPositionsDialog'), closeAllDialog: $('#closeAllPositionsDialog'), allGrid: $('#allPositionsGrid'),
     dialog: $('#positionDialog'), close: $('#closePositionDialog'),
     categoryTitle: $('#positionCategoryTitle'), dayTitle: $('#positionDayTitle'), image: $('#calendarPositionImage'), canvas: $('#positionScratchCanvas'),
-    instruction: $('#positionInstruction'), poseMeta: $('#positionMeta'), poseName: $('#positionPoseName'), poseDescription: $('#positionPoseDescription'), reveal: $('#revealPositionBtn'), complete: $('#completePositionBtn'), toast: $('#toast')
+    instruction: $('#positionInstruction'), poseMeta: $('#positionMeta'), poseName: $('#positionPoseName'), poseDescription: $('#positionPoseDescription'), reveal: $('#revealPositionBtn'), defer: $('#deferPositionBtn'), complete: $('#completePositionBtn'), toast: $('#toast'), deferDialog: $('#deferDialog'), closeDeferDialog: $('#closeDeferDialog'), deferChoices: $('#deferPlayerChoices'), progressDialog: $('#progressDialog'), openProgress: $('#openProgressBtn'), closeProgress: $('#closeProgressDialog'), progressOverview: $('#progressOverview'), progressLevels: $('#progressLevels'), progressMonths: $('#progressMonths'), progressDeferred: $('#progressDeferred'), deferredCountBadge: $('#deferredCountBadge')
   };
 
   // Same keys as previous MF versions: old progress is preserved.
@@ -88,6 +89,8 @@ const pairStorage={
   const REVEALED_KEY = 'sa_position_revealed_mf';
   const MANUAL_UNLOCK_KEY = 'sa_position_manual_unlock_mf';
   const DEV_UNLOCK_ALL_KEY = 'sa_position_dev_unlock_all_mf';
+  const DEFERRED_KEY = 'sa_position_deferred_mf_v1';
+  const HISTORY_KEY = 'sa_position_history_mf_v1';
   let current = null;
   let currentGlobalIndex = -1;
   let currentCategoryIndex = -1;
@@ -100,6 +103,16 @@ const pairStorage={
     catch { return new Set(); }
   };
   const saveSet = (key,set) => pairStorage.setItem(key, JSON.stringify([...set]));
+  const readJSON = (key,fallback) => { try { const v=pairStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } };
+  const saveJSON = (key,value) => pairStorage.setItem(key, JSON.stringify(value));
+  const getDeferred = () => readJSON(DEFERRED_KEY, {});
+  const getHistory = () => readJSON(HISTORY_KEY, []);
+  const progressSet = () => { const set=readSet(DONE_KEY); Object.keys(getDeferred()).forEach(id=>set.add(Number(id))); return set; };
+  const logProgressEvent = (item,status,extra={}) => {
+    const history=getHistory();
+    history.push({id:item.id,order_index:item.order_index,status,date:new Date().toISOString(),...extra});
+    saveJSON(HISTORY_KEY,history.slice(-1200));
+  };
 
   function toast(msg){
     els.toast.textContent = msg;
@@ -197,10 +210,12 @@ const pairStorage={
 
   function render(){
     const done = readSet(DONE_KEY);
+    const deferred = getDeferred();
+    const passed = progressSet();
     const revealed = readSet(REVEALED_KEY);
-    const doneCount = ITEMS.filter(x => done.has(x.id)).length;
+    const doneCount = ITEMS.filter(x => passed.has(x.id)).length;
     const pct = ITEMS.length ? Math.round(doneCount / ITEMS.length * 100) : 0;
-    const activeCat = firstUnlockedIncompleteCategory(done);
+    const activeCat = firstUnlockedIncompleteCategory(passed);
 
     els.done.textContent = doneCount;
     els.total.textContent = ITEMS.length;
@@ -213,9 +228,9 @@ const pairStorage={
     syncDevButton();
     els.categories.innerHTML = '';
     CATEGORIES.forEach((category,catIndex) => {
-      const unlocked = categoryUnlocked(catIndex, done);
-      const complete = categoryDone(category, done);
-      const catDoneCount = category.items.filter(item => done.has(item.id)).length;
+      const unlocked = categoryUnlocked(catIndex, passed);
+      const complete = categoryDone(category, passed);
+      const catDoneCount = category.items.filter(item => passed.has(item.id)).length;
       const catPct = category.items.length ? Math.round(catDoneCount/category.items.length*100) : 0;
 
       const section = document.createElement('section');
@@ -256,16 +271,19 @@ const pairStorage={
         category.items.forEach((item,localIndex) => {
           const globalIndex = category.start + localIndex;
           const isDone = done.has(item.id);
+          const deferredInfo = deferred[item.id];
+          const isDeferred = !!deferredInfo;
           const isRevealed = revealed.has(item.id);
           const btn = document.createElement('button');
           btn.type = 'button';
-          btn.className = `calendar-day ${isDone ? 'completed' : isRevealed ? 'revealed' : 'available'}`;
-          if(isDone){
+          btn.className = `calendar-day ${isDone ? 'completed' : isDeferred ? 'deferred' : isRevealed ? 'revealed' : 'available'}`;
+          if(isDone || isDeferred){
             const img = document.createElement('img');
             img.src = item.image;
-            img.alt = `${category.name}, позиція ${localIndex+1}`;
+            img.alt = `${category.name}, поза ${item.order_index}`;
             img.loading = 'lazy';
             btn.appendChild(img);
+            if(isDeferred){ const badge=document.createElement('span'); badge.className='deferred-badge'; badge.textContent=deferredInfo.wishDone?'Відкладено · бажання ✓':'Відкладено'; btn.appendChild(badge); }
           } else {
             btn.innerHTML = `<span class="day-number">${localIndex+1}</span><span class="day-label">${isRevealed ? 'Відкрита' : 'Стерти'}</span>`;
           }
@@ -326,8 +344,10 @@ const pairStorage={
     revealedNow = true; els.canvas.style.opacity = '0'; els.canvas.style.pointerEvents = 'none';
     if(save){ const set = readSet(REVEALED_KEY); set.add(current.id); saveSet(REVEALED_KEY,set); }
     const done = readSet(DONE_KEY).has(current.id);
-    els.complete.disabled = done; els.complete.textContent = done ? 'Вже виконано ✓' : 'Виконано ✓';
-    els.instruction.textContent = done ? 'Цю позицію вже виконано.' : 'Позиція відкрита. Після виконання натисніть «Виконано».';
+    const deferredInfo = getDeferred()[current.id];
+    els.complete.disabled = done; els.complete.textContent = done ? 'Вже виконано ✓' : deferredInfo ? 'Виконати зараз ✓' : 'Виконано ✓';
+    if(els.defer){ els.defer.disabled = done || !!deferredInfo; els.defer.textContent = deferredInfo ? 'Вже відкладено' : 'Відкласти'; }
+    els.instruction.textContent = done ? 'Цю позицію вже виконано.' : deferredInfo ? (deferredInfo.wishDone ? 'Поза відкладена. Бажання вже виконано ✓' : `Поза відкладена. ${deferredInfo.debtorName} має виконати бажання партнера.`) : 'Позиція відкрита. Після виконання натисніть «Виконано» або відкладіть її.';
     updatePositionMeta(current, true);
     render();
   }
@@ -339,10 +359,12 @@ const pairStorage={
     els.image.src = item.image; els.image.alt = item.poseTitle || ('Поза ' + item.order_index);
     updatePositionMeta(item, false);
     els.dialog.showModal();
-    const alreadyRevealed = readSet(REVEALED_KEY).has(item.id) || isDone;
+    const deferredInfo = getDeferred()[item.id];
+    const alreadyRevealed = readSet(REVEALED_KEY).has(item.id) || isDone || !!deferredInfo;
     els.complete.disabled = !alreadyRevealed || isDone;
-    els.complete.textContent = isDone ? 'Вже виконано ✓' : 'Виконано ✓';
-    els.instruction.textContent = isDone ? 'Цю позицію вже виконано.' : alreadyRevealed ? 'Позиція відкрита. Після виконання натисніть «Виконано».' : 'Зітріть захисний шар, щоб відкрити позицію.';
+    els.complete.textContent = isDone ? 'Вже виконано ✓' : deferredInfo ? 'Виконати зараз ✓' : 'Виконано ✓';
+    if(els.defer){ els.defer.disabled = !alreadyRevealed || isDone || !!deferredInfo; els.defer.textContent = deferredInfo ? 'Вже відкладено' : 'Відкласти'; }
+    els.instruction.textContent = isDone ? 'Цю позицію вже виконано.' : deferredInfo ? (deferredInfo.wishDone ? 'Поза відкладена. Бажання вже виконано ✓' : `Поза відкладена. ${deferredInfo.debtorName} має виконати бажання партнера.`) : alreadyRevealed ? 'Позиція відкрита. Після виконання натисніть «Виконано» або відкладіть її.' : 'Зітріть захисний шар, щоб відкрити позицію.';
     updatePositionMeta(item, alreadyRevealed || isDone);
     requestAnimationFrame(() => alreadyRevealed ? reveal(false) : drawCover());
   }
@@ -357,8 +379,10 @@ const pairStorage={
   els.complete.addEventListener('click', () => {
     if(!current || els.complete.disabled) return;
     const done = readSet(DONE_KEY); done.add(current.id); saveSet(DONE_KEY,done);
+    const deferred=getDeferred(); const wasDeferred=deferred[current.id]; if(wasDeferred){ delete deferred[current.id]; saveJSON(DEFERRED_KEY,deferred); }
     const rev = readSet(REVEALED_KEY); rev.add(current.id); saveSet(REVEALED_KEY,rev);
-    const justFinishedCategory = categoryDone(CATEGORIES[currentCategoryIndex], done);
+    logProgressEvent(current,'done',{resolvedDeferred:!!wasDeferred});
+    const justFinishedCategory = categoryDone(CATEGORIES[currentCategoryIndex], progressSet());
     const isProgression = CATEGORIES[currentCategoryIndex].mode === 'progression';
     const nextIndex = currentCategoryIndex + 1;
     const nextIsProgression = nextIndex < 4;
@@ -367,6 +391,60 @@ const pairStorage={
     else toast('Позицію виконано ✓');
   });
 
+  function openDeferDialog(){
+    if(!current || !els.deferDialog) return;
+    const players=PairDB.active?.players || [{name:'Гравець 1'},{name:'Гравець 2'}];
+    els.deferChoices.innerHTML='';
+    players.forEach((player,index)=>{
+      const btn=document.createElement('button'); btn.type='button'; btn.className='defer-player-btn';
+      btn.innerHTML=`<strong>${player.name || ('Гравець '+(index+1))}</strong><span>відкладає позу й виконує бажання партнера</span>`;
+      btn.addEventListener('click',()=>deferCurrent(index)); els.deferChoices.appendChild(btn);
+    });
+    els.deferDialog.showModal();
+  }
+  function deferCurrent(playerIndex){
+    if(!current) return;
+    const players=PairDB.active?.players || [{name:'Гравець 1'},{name:'Гравець 2'}];
+    const debtor=players[playerIndex] || players[0]; const partner=players[(playerIndex+1)%2] || players[1];
+    const deferred=getDeferred();
+    deferred[current.id]={id:current.id,order_index:current.order_index,debtorIndex:playerIndex,debtorName:debtor.name||`Гравець ${playerIndex+1}`,partnerName:partner?.name||'партнера',date:new Date().toISOString()};
+    saveJSON(DEFERRED_KEY,deferred);
+    const rev=readSet(REVEALED_KEY); rev.add(current.id); saveSet(REVEALED_KEY,rev);
+    logProgressEvent(current,'deferred',{debtorIndex:playerIndex,debtorName:deferred[current.id].debtorName,partnerName:deferred[current.id].partnerName});
+    els.deferDialog.close(); els.dialog.close(); render(); toast(`Поза відкладена · ${deferred[current.id].debtorName} виконує бажання`);
+  }
+  function monthLabel(iso){
+    const d=new Date(iso); if(Number.isNaN(d.getTime())) return 'Без дати';
+    return new Intl.DateTimeFormat('uk-UA',{month:'long',year:'numeric'}).format(d);
+  }
+  function renderDetailedProgress(){
+    const done=readSet(DONE_KEY), deferred=getDeferred(), passed=progressSet();
+    const completed=ITEMS.filter(x=>done.has(x.id)).length, deferredCount=Object.keys(deferred).length, total=ITEMS.length;
+    const pct=total?Math.round(passed.size/total*100):0;
+    els.progressOverview.innerHTML=`<div class="progress-stat"><strong>${passed.size}/${total}</strong><span>зараховано</span></div><div class="progress-stat"><strong>${completed}</strong><span>виконано</span></div><div class="progress-stat deferred-stat"><strong>${deferredCount}</strong><span>відкладено</span></div><div class="progress-stat"><strong>${pct}%</strong><span>загалом</span></div>`;
+    els.progressLevels.innerHTML='';
+    CATEGORIES.forEach(cat=>{ const count=cat.items.filter(x=>passed.has(x.id)).length; const pc=cat.items.length?Math.round(count/cat.items.length*100):0; const row=document.createElement('div'); row.className='progress-level-row'; row.innerHTML=`<div><strong>${cat.name}</strong><span>${count}/${cat.items.length}</span></div><div class="mini-progress"><span style="width:${pc}%"></span></div><b>${pc}%</b>`; els.progressLevels.appendChild(row); });
+    const history=getHistory();
+    const byMonth=new Map();
+    history.forEach(ev=>{ const key=monthLabel(ev.date); const entry=byMonth.get(key)||{done:0,deferred:0,date:ev.date}; if(ev.status==='done')entry.done++; if(ev.status==='deferred')entry.deferred++; byMonth.set(key,entry); });
+    if(!history.length && done.size){ byMonth.set('Раніше',{done:done.size,deferred:0,date:'1970-01-01'}); }
+    els.progressMonths.innerHTML='';
+    [...byMonth.entries()].sort((a,b)=>new Date(b[1].date)-new Date(a[1].date)).forEach(([label,val])=>{ const row=document.createElement('div'); row.className='month-row'; row.innerHTML=`<strong>${label}</strong><span>Виконано: ${val.done}</span><span>Відкладено: ${val.deferred}</span>`; els.progressMonths.appendChild(row); });
+    if(!byMonth.size) els.progressMonths.innerHTML='<p class="empty-state">Поки немає історії проходження.</p>';
+    els.deferredCountBadge.textContent=deferredCount;
+    els.progressDeferred.innerHTML='';
+    const deferredList=Object.values(deferred).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    deferredList.forEach(info=>{ const item=ITEMS.find(x=>x.id===Number(info.id)); if(!item)return; const card=document.createElement('div'); card.className='deferred-progress-card'+(info.wishDone?' wish-done':''); card.innerHTML=`<img src="${item.image}" alt="Поза ${item.order_index}"><div><strong>Поза ${item.order_index} · ${item.poseTitle||''}</strong><span>${info.wishDone?'Бажання виконано ✓':`${info.debtorName} має виконати бажання ${info.partnerName}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`; const actions=document.createElement('div'); actions.className='deferred-card-actions'; if(!info.wishDone){ const wish=document.createElement('button'); wish.type='button'; wish.className='btn primary compact'; wish.textContent='Бажання виконано ✓'; wish.addEventListener('click',()=>{ const all=getDeferred(); if(all[info.id]){ all[info.id].wishDone=true; all[info.id].wishDoneDate=new Date().toISOString(); saveJSON(DEFERRED_KEY,all); } renderDetailedProgress(); document.dispatchEvent(new CustomEvent('progress:changed')); }); actions.appendChild(wish); } const btn=document.createElement('button'); btn.type='button'; btn.className='btn secondary compact'; btn.textContent='Відкрити'; btn.addEventListener('click',()=>{els.progressDialog.close(); const loc=findItemLocation(item); openPosition(item,loc.globalIndex,loc.catIndex,loc.localIndex,false)}); actions.appendChild(btn); card.appendChild(actions); els.progressDeferred.appendChild(card); });
+    if(!deferredList.length) els.progressDeferred.innerHTML='<p class="empty-state">Відкладених поз немає.</p>';
+  }
+
+  els.defer?.addEventListener('click',openDeferDialog);
+  els.closeDeferDialog?.addEventListener('click',()=>els.deferDialog.close());
+  els.deferDialog?.addEventListener('click',e=>{if(e.target===els.deferDialog)els.deferDialog.close()});
+  els.openProgress?.addEventListener('click',()=>{renderDetailedProgress();els.progressDialog.showModal()});
+  els.closeProgress?.addEventListener('click',()=>els.progressDialog.close());
+  els.progressDialog?.addEventListener('click',e=>{if(e.target===els.progressDialog)els.progressDialog.close()});
+
   els.devUnlockAll?.addEventListener('click', toggleDevUnlockAll);
   els.devShowAll?.addEventListener('click', showAllPositions);
   els.closeAllDialog?.addEventListener('click', () => els.allDialog.close());
@@ -374,7 +452,7 @@ const pairStorage={
 
   els.reset.addEventListener('click', () => {
     if(confirm('Скинути весь прогрес календаря MF?')){
-      pairStorage.removeItem(DONE_KEY); pairStorage.removeItem(REVEALED_KEY); pairStorage.removeItem(MANUAL_UNLOCK_KEY); pairStorage.removeItem(DEV_UNLOCK_ALL_KEY); render(); toast('Прогрес скинуто');
+      pairStorage.removeItem(DONE_KEY); pairStorage.removeItem(REVEALED_KEY); pairStorage.removeItem(MANUAL_UNLOCK_KEY); pairStorage.removeItem(DEV_UNLOCK_ALL_KEY); pairStorage.removeItem(DEFERRED_KEY); pairStorage.removeItem(HISTORY_KEY); render(); toast('Прогрес скинуто');
     }
   });
 
@@ -392,7 +470,7 @@ const pairStorage={
   'use strict';
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
-  const calendarTabBtn=$('#calendarTabBtn'), placesTabBtn=$('#placesTabBtn'), gamesTabBtn=$('#gamesTabBtn'), calendarSection=$('#calendarSection'), placesSection=$('#placesSection'), gamesSection=$('#gamesSection');
+  const calendarTabBtn=$('#calendarTabBtn'), placesTabBtn=$('#placesTabBtn'), gamesTabBtn=$('#gamesTabBtn'), progressTabBtn=$('#progressTabBtn'), calendarSection=$('#calendarSection'), placesSection=$('#placesSection'), gamesSection=$('#gamesSection'), progressSection=$('#progressSection');
   if(!gamesSection) return;
 
   const NAMES_KEY='sa_games_player_names_v1',
@@ -424,11 +502,17 @@ const pairStorage={
 
   const gamesMenu=$('#gamesMenu'), gameDetail=$('#gameDetail'), backToGames=$('#backToGamesBtn'), activeGameTitle=$('#activeGameTitle');
   const playersPanel=$('#playersPanel');
-  const gameViews={passion:$('#passionGameView'),direct:$('#directGameView'),randomPose:$('#randomPoseGameView')};
+  const gameViews={passion:$('#passionGameView'),direct:$('#directGameView'),randomPose:$('#randomPoseGameView'),secretWish:$('#secretWishGameView'),scenarioWheel:$('#scenarioWheelGameView'),fiveMinutes:$('#fiveMinutesGameView'),blindChoice:$('#blindChoiceGameView'),wishBattle:$('#wishBattleGameView'),eveningQuest:$('#eveningQuestGameView')};
   const gameMeta={
     passion:{title:'🎰 Рулетка Страсті',players:true,custom:true},
     direct:{title:'🎲 Прямолінійний кубик',players:true,custom:true},
-    randomPose:{title:'🎡 Випадкова поза',players:false,custom:false}
+    randomPose:{title:'🎡 Випадкова поза',players:false,custom:false},
+    secretWish:{title:'💌 Таємне бажання',players:true,custom:false},
+    scenarioWheel:{title:'🎭 Колесо сценаріїв',players:true,custom:false},
+    fiveMinutes:{title:'⏱️ 5 хвилин',players:false,custom:false},
+    blindChoice:{title:'🃏 Сліпий вибір',players:true,custom:false},
+    wishBattle:{title:'⚔️ Батл бажань',players:true,custom:false},
+    eveningQuest:{title:'🌙 Квест на вечір',players:true,custom:false}
   };
   const rouletteCustomPanel=$('#rouletteCustomPanel');
 
@@ -471,16 +555,37 @@ const pairStorage={
   $('#resetScoreBtn')?.addEventListener('click',()=>{setScore([0,0]);setTurn(0);syncPlayers()});
 
   function showTab(which){
-    calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games';
-    calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games');
+    calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(progressSection)progressSection.hidden=which!=='progress';
+    calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); progressTabBtn?.classList.toggle('active',which==='progress');
     pairStorage.setItem('sa_main_tab_v1',which);
     if(which==='games') showGamesMenu();
     if(which==='places') renderPlaces();
+    if(which==='progress') renderProgressPage();
   }
   calendarTabBtn?.addEventListener('click',()=>showTab('calendar'));
   placesTabBtn?.addEventListener('click',()=>showTab('places'));
   gamesTabBtn?.addEventListener('click',()=>showTab('games'));
+  progressTabBtn?.addEventListener('click',()=>showTab('progress'));
 
+  const PAGE_DONE_KEY='sa_position_done_mf', PAGE_DEFERRED_KEY='sa_position_deferred_mf_v1', PAGE_HISTORY_KEY='sa_position_history_mf_v1';
+  const pagePoseOverview=$('#pagePoseOverview'), pagePoseLevels=$('#pagePoseLevels'), pagePlacesOverview=$('#pagePlacesOverview'), pagePlacesCategories=$('#pagePlacesCategories'), pageProgressMonths=$('#pageProgressMonths'), pageDeferredList=$('#pageDeferredList'), pageDeferredCount=$('#pageDeferredCount');
+  const POSE_LEVELS=[['Легкий',1,46],['Середній',47,105],['Важкий',106,158],['Складний',159,210],['У ванній',211,254],['У машині',255,294],['Акробатичний',295,312]];
+  function pageJSON(key,fallback){try{return JSON.parse(pairStorage.getItem(key)||JSON.stringify(fallback))}catch{return fallback}}
+  function renderProgressPage(){
+    if(!progressSection)return;
+    const positions=(Array.isArray(window.POSITION_ITEMS)?window.POSITION_ITEMS:[]).filter(x=>x.audience==='mf');
+    const done=new Set(pageJSON(PAGE_DONE_KEY,[]).map(Number)); const deferred=pageJSON(PAGE_DEFERRED_KEY,{}); const passed=new Set(done); Object.keys(deferred).forEach(id=>passed.add(Number(id)));
+    const wishDone=Object.values(deferred).filter(x=>x.wishDone).length, wishOpen=Object.values(deferred).filter(x=>!x.wishDone).length;
+    const posePct=positions.length?Math.round(passed.size/positions.length*100):0;
+    if(pagePoseOverview)pagePoseOverview.innerHTML=`<div class="progress-stat"><strong>${passed.size}/${positions.length}</strong><span>зараховано</span></div><div class="progress-stat"><strong>${done.size}</strong><span>виконано</span></div><div class="progress-stat deferred-stat"><strong>${Object.keys(deferred).length}</strong><span>відкладено</span></div><div class="progress-stat"><strong>${posePct}%</strong><span>поз</span></div>`;
+    if(pagePoseLevels){pagePoseLevels.innerHTML='';POSE_LEVELS.forEach(([name,from,to])=>{const total=to-from+1,count=positions.filter(x=>x.order_index>=from&&x.order_index<=to&&passed.has(Number(x.id))).length,pct=Math.round(count/total*100);const row=document.createElement('div');row.className='progress-level-row';row.innerHTML=`<div><strong>${name}</strong><span>${count}/${total}</span></div><div class="mini-progress"><span style="width:${pct}%"></span></div><b>${pct}%</b>`;pagePoseLevels.appendChild(row)})}
+    const marked=new Set(pageJSON(PLACES_KEY,[])); const custom=getCustomPlaces(); const cats=PLACE_CATEGORIES.map(c=>({name:c.name,items:[...c.items]})); custom.forEach(x=>{let c=cats.find(y=>y.name===x.category);if(!c){c={name:x.category||'Мої місця',items:[]};cats.push(c)}c.items.push(x)}); const placeTotal=cats.reduce((s,c)=>s+c.items.length,0), placeDone=[...marked].filter(id=>cats.some(c=>c.items.some(x=>x.id===id))).length, placePct=placeTotal?Math.round(placeDone/placeTotal*100):0;
+    if(pagePlacesOverview)pagePlacesOverview.innerHTML=`<div class="progress-stat"><strong>${placeDone}/${placeTotal}</strong><span>відзначено</span></div><div class="progress-stat"><strong>${placePct}%</strong><span>місць</span></div><div class="progress-stat"><strong>${custom.length}</strong><span>власних</span></div>`;
+    if(pagePlacesCategories){pagePlacesCategories.innerHTML='';cats.filter(c=>c.items.length).forEach(c=>{const count=c.items.filter(x=>marked.has(x.id)).length,pct=Math.round(count/c.items.length*100);const row=document.createElement('div');row.className='progress-level-row';row.innerHTML=`<div><strong>${c.name}</strong><span>${count}/${c.items.length}</span></div><div class="mini-progress"><span style="width:${pct}%"></span></div><b>${pct}%</b>`;pagePlacesCategories.appendChild(row)})}
+    const history=pageJSON(PAGE_HISTORY_KEY,[]), months=new Map(), fmt=new Intl.DateTimeFormat('uk-UA',{month:'long',year:'numeric'}); history.forEach(ev=>{const d=new Date(ev.date);if(isNaN(d))return;const key=fmt.format(d),m=months.get(key)||{date:d,done:0,deferred:0};if(ev.status==='done')m.done++;if(ev.status==='deferred')m.deferred++;months.set(key,m)}); if(pageProgressMonths){pageProgressMonths.innerHTML='';[...months.entries()].sort((a,b)=>b[1].date-a[1].date).forEach(([label,m])=>{const row=document.createElement('div');row.className='month-row';row.innerHTML=`<strong>${label}</strong><span>Виконано: ${m.done}</span><span>Відкладено: ${m.deferred}</span>`;pageProgressMonths.appendChild(row)});if(!months.size)pageProgressMonths.innerHTML='<p class="empty-state">Поки немає історії проходження.</p>'}
+    const list=Object.values(deferred).sort((a,b)=>new Date(b.date)-new Date(a.date)); if(pageDeferredCount)pageDeferredCount.textContent=list.length; if(pageDeferredList){pageDeferredList.innerHTML='';list.forEach(info=>{const item=positions.find(x=>Number(x.id)===Number(info.id));if(!item)return;const card=document.createElement('div');card.className='deferred-progress-card'+(info.wishDone?' wish-done':'');card.innerHTML=`<img src="${item.image}" alt="Поза ${item.order_index}"><div><strong>Поза ${item.order_index} · ${item.poseTitle||''}</strong><span>${info.wishDone?'Бажання виконано ✓':`${info.debtorName} має виконати бажання ${info.partnerName}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;const actions=document.createElement('div');actions.className='deferred-card-actions';if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>{const all=pageJSON(PAGE_DEFERRED_KEY,{});if(all[info.id]){all[info.id].wishDone=true;all[info.id].wishDoneDate=new Date().toISOString();pairStorage.setItem(PAGE_DEFERRED_KEY,JSON.stringify(all))}renderProgressPage();document.dispatchEvent(new CustomEvent('progress:changed'))});actions.appendChild(wish)}card.appendChild(actions);pageDeferredList.appendChild(card)});if(!list.length)pageDeferredList.innerHTML='<p class="empty-state">Відкладених поз немає.</p>'}
+  }
+  document.addEventListener('progress:changed',()=>{if(progressSection&&!progressSection.hidden)renderProgressPage()});
   function showGamesMenu(){
     gamesMenu.hidden=false; gameDetail.hidden=true;
     Object.values(gameViews).forEach(v=>v && (v.hidden=true));
@@ -557,6 +662,7 @@ const pairStorage={
           done.has(id)?done.delete(id):done.add(id);
           pairStorage.setItem(PLACES_KEY,JSON.stringify([...done]));
           renderPlaces();
+          if(progressSection&&!progressSection.hidden)renderProgressPage();
         });
         row.appendChild(b);
         if(item.custom){
@@ -859,7 +965,7 @@ const pairStorage={
   $('#directDoneBtn')?.addEventListener('click',()=>{resolveResult(true);if(dbox)dbox.hidden=true});
   $('#directNoBtn')?.addEventListener('click',()=>{resolveResult(false);if(dbox)dbox.hidden=true});
 
-  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const t=pairStorage.getItem('sa_main_tab_v1'); showTab(['calendar','places','games'].includes(t)?t:'calendar'); }
+  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const t=pairStorage.getItem('sa_main_tab_v1'); showTab(['calendar','places','games','progress'].includes(t)?t:'calendar'); }
   document.addEventListener('pair:changed', refreshPairUI);
   if(PairDB.active) refreshPairUI();
 })();
@@ -884,6 +990,7 @@ const pairStorage={
   function showApp(){const p=PairDB.active;if(!p)return;gate.hidden=true;shell.hidden=false;label.textContent=pairLabel(p);}
   function showGate(){shell.hidden=true;gate.hidden=false;renderList()}
   $('#switchPairBtn')?.addEventListener('click',showGate);
+  $('#openSessionBtn')?.addEventListener('click',()=>{showGate();setTimeout(()=>document.querySelector('.pair-session-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)});
   $('#createPairBtn')?.addEventListener('click',async()=>{
     const p1=$('#newPairP1').value.trim()||'Гравець 1', p2=$('#newPairP2').value.trim()||'Гравець 2';
     await PairDB.create(p1,$('#newPairG1').value,p2,$('#newPairG2').value); showApp();
@@ -916,4 +1023,58 @@ const pairStorage={
   });
   document.addEventListener('pair:changed',e=>{if(e.detail)label.textContent=pairLabel(e.detail)});document.addEventListener('pair:profile',()=>{if(PairDB.active)label.textContent=pairLabel(PairDB.active)});
   (async()=>{try{const p=await PairDB.init();if(p){document.dispatchEvent(new CustomEvent('pair:changed',{detail:p}));showApp()}else showGate()}catch(err){console.error(err);gate.hidden=false;listEl.innerHTML='<div class="pair-list-empty">Не вдалося відкрити IndexedDB. Запустіть сайт через локальний веб-сервер (localhost), а не в приватному режимі.</div>'}})();
+})();
+
+// v20 unified progress refresh
+document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new CustomEvent('progress:changed')); }catch(e){} });
+
+// --- Extra couple games v21 ---
+(() => {
+  'use strict';
+  const $=s=>document.querySelector(s); const parse=(k,f)=>{try{return JSON.parse(pairStorage.getItem(k)||JSON.stringify(f))}catch{return f}}; const save=(k,v)=>pairStorage.setItem(k,JSON.stringify(v));
+  const names=()=>{try{return JSON.parse(pairStorage.getItem('sa_games_player_names_v1')||'[]')}catch{return []}};
+  const SECRET='sa_secret_wishes_v1', BATTLE='sa_battle_wishes_v1', BWIN='sa_battle_winners_v1', RATINGS='sa_five_ratings_v1';
+  const poses=()=>Array.isArray(window.POSITION_ITEMS)?window.POSITION_ITEMS.filter(x=>x.audience==='mf'):[];
+  const allPlaces=()=>document.querySelectorAll('.place-chip').length?[...document.querySelectorAll('.place-chip')].map(x=>x.textContent.replace(/×$/,'').trim()).filter(Boolean):['У машині','У ванній','На дивані','У готельному номері','На природі'];
+  const actions=['Поцілунок','Дотик','Масаж','Стиснути','Облизати','Смоктати','Шльопання'];
+  const bodies=['Рука','Сідниці','Спина','Живіт','Щоки','Груди','Пах','Вухо','Стопи','Палець','Коліна','Нога','Губи','Пупок','Шия','Соски','Промежина','Стегно','Пальці ніг'];
+  function addSecret(player,input){const val=$(input)?.value.trim();if(!val)return;const d=parse(SECRET,[[],[]]);d[player]||=[];d[player].push(val);save(SECRET,d);$(input).value='';renderSecret()}
+  function renderSecret(){const d=parse(SECRET,[[],[]]), n=names(); if($('#secretWishP1Title'))$('#secretWishP1Title').textContent=n[0]||'Гравець 1';if($('#secretWishP2Title'))$('#secretWishP2Title').textContent=n[1]||'Гравець 2';if($('#secretWishP1Count'))$('#secretWishP1Count').textContent=`Збережено таємно: ${(d[0]||[]).length}`;if($('#secretWishP2Count'))$('#secretWishP2Count').textContent=`Збережено таємно: ${(d[1]||[]).length}`}
+  $('#secretWishP1Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(0,'#secretWishP1Input')});$('#secretWishP2Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(1,'#secretWishP2Input')});
+  $('#revealSecretWishBtn')?.addEventListener('click',()=>{const d=parse(SECRET,[[],[]]), pool=[...(d[0]||[]).map(x=>({p:0,x})),...(d[1]||[]).map(x=>({p:1,x}))],box=$('#secretWishResult'),n=names();if(!pool.length){box.hidden=false;box.innerHTML='<strong>Спочатку додайте хоча б одне бажання.</strong>';return}const r=pool[Math.floor(Math.random()*pool.length)];box.hidden=false;box.innerHTML=`<small>Бажання від ${n[r.p]||'гравця'}</small><strong>${escapeHtml(r.x)}</strong>`});
+  function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  // scenario reels
+  const scenarios=['Романтика','Швидко','Повільно','Без слів','Із зав’язаними очима','У новому місці','Тільки поцілунки']; const durations=['2 хв','5 хв','10 хв','15 хв','20 хв']; let scenMode='duration';
+  function simpleReel(el,items){if(!el)return;const track=el.querySelector('.slot-track');let idx=Math.floor(Math.random()*items.length);function draw(){track.innerHTML=[-1,0,1].map(o=>`<div class="slot-item ${o===0?'active':''}">${escapeHtml(items[(idx+o+items.length)%items.length])}</div>`).join('')}draw();return {setItems(a){items=a;idx%=Math.max(a.length,1);draw()},spin(){return new Promise(res=>{let steps=18+Math.floor(Math.random()*10),i=0;const t=setInterval(()=>{idx=(idx+1)%items.length;draw();if(++i>=steps){clearInterval(t);res(items[idx])}},70+i*3)})}}}
+  const scenReel=simpleReel($('#scenarioMainReel'),scenarios), secondReel=simpleReel($('#scenarioSecondReel'),durations);
+  $('#scenarioSecondType')?.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(!b)return;scenMode=b.dataset.mode;$('#scenarioSecondType').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));const arr=scenMode==='duration'?durations:allPlaces();secondReel?.setItems(arr.length?arr:['Ваше місце']);$('#scenarioSecondLabel').textContent=scenMode==='duration'?'Тривалість':'Місце'});
+  $('#scenarioRollBtn')?.addEventListener('click',async()=>{const a=await scenReel.spin(),b=await secondReel.spin(),box=$('#scenarioResult');box.hidden=false;box.innerHTML=`<small>Ваш сценарій</small><strong>${a} — ${b}</strong>`});
+  // 5 minutes
+  const fiveModes=['Тільки дотики','Тільки поцілунки','Без рук','Один керує','Повільний темп','Без слів'];let fiveSec=300,fiveTimerId=null,fiveMode=fiveModes[0];
+  function fiveDraw(){if($('#fiveTimer'))$('#fiveTimer').textContent=`${String(Math.floor(fiveSec/60)).padStart(2,'0')}:${String(fiveSec%60).padStart(2,'0')}`;if($('#fiveMode'))$('#fiveMode').textContent=fiveMode}
+  $('#fiveRandomBtn')?.addEventListener('click',()=>{fiveMode=fiveModes[Math.floor(Math.random()*fiveModes.length)];fiveDraw()});$('#fiveStartBtn')?.addEventListener('click',()=>{if(fiveTimerId)return;fiveTimerId=setInterval(()=>{fiveSec--;fiveDraw();if(fiveSec<=0){clearInterval(fiveTimerId);fiveTimerId=null;$('#fiveRating').hidden=false}},1000)});$('#fiveResetBtn')?.addEventListener('click',()=>{clearInterval(fiveTimerId);fiveTimerId=null;fiveSec=300;$('#fiveRating').hidden=true;fiveDraw()});
+  document.querySelectorAll('#fiveRating [data-rating]').forEach(b=>b.addEventListener('click',()=>{const d=parse(RATINGS,[]);d.push({rating:+b.dataset.rating,mode:fiveMode,at:Date.now()});save(RATINGS,d);$('#fiveRatingHistory').textContent=`Остання оцінка: ${b.dataset.rating}/5`;$('#fiveRating').hidden=true}));fiveDraw();
+  // blind choice
+  function newBlind(){const box=$('#blindCards'),res=$('#blindResult');if(!box)return;res.hidden=true;box.innerHTML='';for(let i=0;i<3;i++){const b=document.createElement('button');b.className='blind-card';b.innerHTML='<span>?</span><small>Обрати</small>';b.onclick=()=>revealBlind(b);box.appendChild(b)}}
+  function revealBlind(btn){if(btn.classList.contains('opened'))return;const types=['Дія','Поза','Місце','Бажання','Бонус'],type=types[Math.floor(Math.random()*types.length)];let value='';if(type==='Дія')value=actions[Math.floor(Math.random()*actions.length)];if(type==='Поза'){const a=poses(),r=a[Math.floor(Math.random()*a.length)];value=r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Поза'}if(type==='Місце'){const a=allPlaces();value=a[Math.floor(Math.random()*a.length)]||'Ваше місце'}if(type==='Бажання'){const d=parse(SECRET,[[],[]]).flat();value=d.length?d[Math.floor(Math.random()*d.length)]:'Додайте бажання у грі «Таємне бажання»'}if(type==='Бонус')value='+1 бал поточному гравцю';btn.classList.add('opened');btn.innerHTML=`<strong>${type}</strong><small>${escapeHtml(value)}</small>`;const res=$('#blindResult');res.hidden=false;res.innerHTML=`<small>${type}</small><strong>${escapeHtml(value)}</strong>`}$('#blindResetBtn')?.addEventListener('click',newBlind);newBlind();
+  // battle
+  function addBattle(p,input){const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()};function renderBattle(){const d=parse(BATTLE,[[],[]]);if($('#battleCounts'))$('#battleCounts').textContent=`Гравець 1: ${(d[0]||[]).length}/10 · Гравець 2: ${(d[1]||[]).length}/10`;const w=parse(BWIN,[]);if($('#battleWinners'))$('#battleWinners').innerHTML=w.length?w.map(x=>`<span class="wish-chip">${escapeHtml(x)}</span>`).join(''):'<span class="muted">Ще немає переможців</span>'}
+  $('#battleP1Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(0,'#battleP1Input')});$('#battleP2Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(1,'#battleP2Input')});$('#battleStartBtn')?.addEventListener('click',()=>{const d=parse(BATTLE,[[],[]]),arena=$('#battleArena');if(!(d[0]?.length&&d[1]?.length)){arena.hidden=false;arena.innerHTML='<strong>Додайте бажання від обох гравців.</strong>';return}const a=d[0][Math.floor(Math.random()*d[0].length)],b=d[1][Math.floor(Math.random()*d[1].length)];arena.hidden=false;arena.innerHTML=`<button class="battle-option">${escapeHtml(a)}</button><span>VS</span><button class="battle-option">${escapeHtml(b)}</button>`;arena.querySelectorAll('.battle-option').forEach(x=>x.onclick=()=>{const w=parse(BWIN,[]);w.push(x.textContent);save(BWIN,w);renderBattle();arena.hidden=true})});renderBattle();
+  // quest
+  let quest=null,questStep=0;function makeQuest(){const ps=poses(),wish=parse(SECRET,[[],[]]).flat();return [{type:'Місце',value:(()=>{const a=allPlaces();return a[Math.floor(Math.random()*a.length)]||'Обране вами місце'})()},{type:'Дія',value:actions[Math.floor(Math.random()*actions.length)]},{type:'Частина тіла',value:bodies[Math.floor(Math.random()*bodies.length)]},{type:'Поза',value:(()=>{const r=ps[Math.floor(Math.random()*ps.length)];return r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Випадкова поза'})()},{type:'Фінальне бажання',value:wish.length?wish[Math.floor(Math.random()*wish.length)]:'Додайте власне бажання'}]};function renderQuest(){const el=$('#questSteps');if(!el)return;el.innerHTML=(quest||[]).map((s,i)=>`<div class="quest-step ${i<questStep?'done':i===questStep?'active':'locked'}"><span>${i+1}</span><div><small>${s.type}</small><strong>${i<=questStep?escapeHtml(s.value):'Заблоковано'}</strong></div></div>`).join('');$('#questNextBtn').disabled=!quest||questStep>=quest.length-1}$('#questNewBtn')?.addEventListener('click',()=>{quest=makeQuest();questStep=0;renderQuest()});$('#questNextBtn')?.addEventListener('click',()=>{if(quest&&questStep<quest.length-1){questStep++;renderQuest()}});renderQuest();
+  document.addEventListener('pair:changed',()=>{renderSecret();renderBattle()});renderSecret();
+})();
+
+// --- P2P session sync v21 ---
+(() => {
+  const $=s=>document.querySelector(s); let peer=null,conn=null,isApplying=false,lastSent='';
+  const status=(t,ok=false)=>{const e=$('#sessionStatus');if(e){e.textContent=t;e.classList.toggle('connected',ok)}};
+  function code(){return 'love-'+Math.random().toString(36).slice(2,8)}
+  function wire(c){conn=c;$('#leaveSessionBtn').hidden=false;c.on('open',()=>{status('Підключено · синхронізація активна',true);if(PairDB.active)sendPair(PairDB.active)});c.on('data',async msg=>{if(msg?.type==='pair'&&msg.pair){isApplying=true;try{await PairDB.applyRemote(msg.pair);const g=document.querySelector('#pairGate'),sh=document.querySelector('#appShell'),lab=document.querySelector('#activePairLabel');if(g)g.hidden=true;if(sh)sh.hidden=false;if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');status('Синхронізовано',true)}finally{setTimeout(()=>isApplying=false,150)}}});c.on('close',()=>{status('Сесію завершено');conn=null;$('#leaveSessionBtn').hidden=true});c.on('error',e=>status('Помилка з’єднання: '+e.type))}
+  function sendPair(pair){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(snap===lastSent)return;lastSent=snap;conn.send({type:'pair',pair:JSON.parse(snap)})}
+  $('#createSessionBtn')?.addEventListener('click',()=>{if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}peer?.destroy();const id=code();peer=new Peer(id);status('Створюємо сесію…');peer.on('open',pid=>{$('#sessionCode').textContent=pid;$('#sessionCodeBox').hidden=false;status('Очікуємо підключення партнера…')});peer.on('connection',wire);peer.on('error',e=>status('Помилка: '+e.type))});
+  $('#joinSessionBtn')?.addEventListener('click',()=>{const id=$('#joinSessionCode')?.value.trim();if(!id)return;if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}peer?.destroy();peer=new Peer();status('Підключення…');peer.on('open',()=>wire(peer.connect(id,{reliable:true})));peer.on('error',e=>status('Помилка: '+e.type))});
+  $('#copySessionCodeBtn')?.addEventListener('click',async()=>{const t=$('#sessionCode')?.textContent;if(t&&t!=='—'){try{await navigator.clipboard.writeText(t);status('Код скопійовано')}catch{status('Скопіюйте код вручну: '+t)}}});
+  $('#leaveSessionBtn')?.addEventListener('click',()=>{try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено')});
+  document.addEventListener('pair:state-saved',e=>sendPair(e.detail));document.addEventListener('pair:profile',()=>sendPair(PairDB.active));
 })();

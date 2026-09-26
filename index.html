@@ -37,6 +37,18 @@
         </div>
         <button class="btn primary" id="createPairBtn" type="button">Створити пару</button>
       </div>
+      <div class="pair-session-card">
+        <h2>Грати разом на двох пристроях</h2>
+        <p>Створи P2P-сесію або введи код партнера. Прогрес активної пари синхронізується між обома пристроями.</p>
+        <div class="session-actions">
+          <button class="btn primary" id="createSessionBtn" type="button">Створити сесію</button>
+          <div class="session-join-row"><input id="joinSessionCode" maxlength="32" placeholder="Код сесії"><button class="btn secondary" id="joinSessionBtn" type="button">Приєднатися</button></div>
+        </div>
+        <div id="sessionStatus" class="session-status">Не підключено</div>
+        <div id="sessionCodeBox" class="session-code-box" hidden><span>Код сесії</span><strong id="sessionCode">—</strong><button class="text-btn" id="copySessionCodeBtn" type="button">Копіювати</button></div>
+        <button class="text-btn danger" id="leaveSessionBtn" type="button" hidden>Вийти із сесії</button>
+      </div>
+
       <div class="pair-backup">
         <h2>Перенесення між пристроями</h2>
         <p>Експортуйте всі профілі пар та їхній прогрес у JSON-файл, а на іншому пристрої імпортуйте цей файл.</p>
@@ -50,11 +62,12 @@
   </div>
 
   <main class="app-shell" id="appShell" hidden>
-    <div class="pair-bar"><div><small>Активна пара</small><strong id="activePairLabel">—</strong></div><button id="switchPairBtn" class="btn secondary compact-btn" type="button">Змінити пару</button></div>
+    <div class="pair-bar"><div><small>Активна пара</small><strong id="activePairLabel">—</strong></div><div class="pair-bar-actions"><button id="openSessionBtn" class="btn secondary compact-btn" type="button">Сесія</button><button id="switchPairBtn" class="btn secondary compact-btn" type="button">Змінити пару</button></div></div>
     <nav class="main-tabs" aria-label="Розділи">
       <button class="main-tab active" id="calendarTabBtn" type="button">Календар поз</button>
       <button class="main-tab" id="placesTabBtn" type="button">Познач місця</button>
       <button class="main-tab" id="gamesTabBtn" type="button">Ігри</button>
+      <button class="main-tab" id="progressTabBtn" type="button">Прогрес</button>
     </nav>
 
     <section id="calendarSection">
@@ -74,7 +87,7 @@
       <div class="progress-track"><div id="calendarProgress" class="progress-fill"></div></div>
       <div class="progress-foot">
         <span id="calendarStatus">Легкий відкрито</span>
-        <button id="resetCalendarBtn" class="text-btn danger">Скинути прогрес</button>
+        <div class="progress-foot-actions"><button id="openProgressBtn" class="text-btn">Детальний прогрес</button><button id="resetCalendarBtn" class="text-btn danger">Скинути прогрес</button></div>
       </div>
     </section>
 
@@ -114,6 +127,17 @@
       </article>
     </section>
 
+
+    <section id="progressSection" class="games-section progress-page" hidden>
+      <header class="hero games-hero"><div><div class="eyebrow">📊 ПРОГРЕС ПАРИ</div><h1>Прогрес</h1><p class="subtitle">Загальний прогрес позицій і місць для активної пари, статистика по місяцях та відкладені пози.</p></div></header>
+      <div class="progress-page-grid">
+        <article class="game-card"><div class="game-card-head"><div><h2>Пози</h2><p>Виконані та відкладені пози зараховуються до проходження рівнів.</p></div></div><div id="pagePoseOverview" class="progress-overview"></div><div id="pagePoseLevels" class="progress-levels"></div></article>
+        <article class="game-card"><div class="game-card-head"><div><h2>Місця</h2><p>Скільки місць із вашого списку вже відзначено.</p></div></div><div id="pagePlacesOverview" class="progress-overview"></div><div id="pagePlacesCategories" class="progress-levels"></div></article>
+      </div>
+      <article class="game-card"><div class="section-head-row"><h2>По місяцях</h2></div><div id="pageProgressMonths" class="progress-months"></div></article>
+      <article class="game-card"><div class="section-head-row"><h2>Відкладені пози та бажання</h2><span id="pageDeferredCount" class="count-badge">0</span></div><div id="pageDeferredList" class="progress-deferred"></div></article>
+    </section>
+
     <section id="gamesSection" class="games-section" hidden>
       <header class="hero games-hero">
         <div>
@@ -139,6 +163,12 @@
           <span><strong>Випадкова поза</strong><small>Крутіть колесо та отримайте випадкову MF-позу</small></span>
           <span class="game-launch-arrow">›</span>
         </button>
+        <button class="game-launch-card" data-game="secretWish" type="button"><span class="game-launch-icon">💌</span><span><strong>Таємне бажання</strong><small>Кожен додає свої бажання приватно, потім відкривається випадкове</small></span><span class="game-launch-arrow">›</span></button>
+        <button class="game-launch-card" data-game="scenarioWheel" type="button"><span class="game-launch-icon">🎭</span><span><strong>Колесо сценаріїв</strong><small>Сценарій + тривалість або місце</small></span><span class="game-launch-arrow">›</span></button>
+        <button class="game-launch-card" data-game="fiveMinutes" type="button"><span class="game-launch-icon">⏱️</span><span><strong>5 хвилин</strong><small>Випадковий режим, таймер і оцінка після завершення</small></span><span class="game-launch-arrow">›</span></button>
+        <button class="game-launch-card" data-game="blindChoice" type="button"><span class="game-launch-icon">🃏</span><span><strong>Сліпий вибір</strong><small>Одна з трьох закритих карток відкриває випадковий сюрприз</small></span><span class="game-launch-arrow">›</span></button>
+        <button class="game-launch-card" data-game="wishBattle" type="button"><span class="game-launch-icon">⚔️</span><span><strong>Батл бажань</strong><small>Два бажання змагаються, переможці йдуть у список «на потім»</small></span><span class="game-launch-arrow">›</span></button>
+        <button class="game-launch-card" data-game="eveningQuest" type="button"><span class="game-launch-icon">🌙</span><span><strong>Квест на вечір</strong><small>Місце → дія → частина тіла → поза → фінальне бажання</small></span><span class="game-launch-arrow">›</span></button>
       </section>
 
       <section id="gameDetail" class="game-detail" hidden>
@@ -277,6 +307,41 @@
             <button class="btn secondary" id="randomPoseOpenBtn" type="button">Відкрити позу крупніше</button>
           </div>
         </article>
+
+        <article class="game-card single-game-view" id="secretWishGameView" hidden>
+          <div class="game-card-head"><div><div class="eyebrow">💌 ТАЄМНЕ БАЖАННЯ</div><h2>Особисті списки бажань</h2><p>Кожен гравець додає свої бажання. Список іншого гравця не показується до випадкового відкриття.</p></div></div>
+          <div class="secret-wish-columns"><section><h3 id="secretWishP1Title">Гравець 1</h3><form class="inline-form" id="secretWishP1Form"><input id="secretWishP1Input" maxlength="100" placeholder="Додати таємне бажання"><button class="btn secondary">Додати</button></form><div id="secretWishP1Count" class="private-count"></div></section><section><h3 id="secretWishP2Title">Гравець 2</h3><form class="inline-form" id="secretWishP2Form"><input id="secretWishP2Input" maxlength="100" placeholder="Додати таємне бажання"><button class="btn secondary">Додати</button></form><div id="secretWishP2Count" class="private-count"></div></section></div>
+          <button class="btn primary big-roll" id="revealSecretWishBtn" type="button">Відкрити випадкове бажання</button><div class="result-box" id="secretWishResult" hidden></div>
+        </article>
+
+        <article class="game-card single-game-view" id="scenarioWheelGameView" hidden>
+          <div class="game-card-head"><div><div class="eyebrow">🎭 КОЛЕСО СЦЕНАРІЇВ</div><h2>Сценарій + друге колесо</h2><p>Перше колесо обирає стиль, друге — тривалість або місце.</p></div></div>
+          <div class="action-choice" id="scenarioSecondType"><button class="choice-btn active" data-mode="duration">Тривалість</button><button class="choice-btn" data-mode="place">Місце</button></div>
+          <div class="slot-stack"><div class="slot-block"><span class="reel-label">Сценарій</span><div class="slot-window" id="scenarioMainReel"><div class="slot-track"></div><div class="slot-focus"></div></div></div><div class="slot-block"><span class="reel-label" id="scenarioSecondLabel">Тривалість</span><div class="slot-window" id="scenarioSecondReel"><div class="slot-track"></div><div class="slot-focus"></div></div></div></div>
+          <button class="btn primary big-roll" id="scenarioRollBtn">Крути</button><div class="result-box" id="scenarioResult" hidden></div>
+        </article>
+
+        <article class="game-card single-game-view" id="fiveMinutesGameView" hidden>
+          <div class="game-card-head"><div><div class="eyebrow">⏱️ 5 ХВИЛИН</div><h2>П'ятихвилинний режим</h2><p>Отримайте випадковий режим, запустіть таймер, а після завершення оцініть раунд.</p></div></div>
+          <div class="timer-mode" id="fiveMode">—</div><div class="big-timer" id="fiveTimer">05:00</div><div class="timer-actions"><button class="btn secondary" id="fiveRandomBtn">Новий режим</button><button class="btn primary" id="fiveStartBtn">Старт</button><button class="btn secondary" id="fiveResetBtn">Скинути</button></div>
+          <div id="fiveRating" class="rating-box" hidden><strong>Оцініть раунд</strong><div class="rating-stars"><button type="button" data-rating="1">1★</button><button type="button" data-rating="2">2★</button><button type="button" data-rating="3">3★</button><button type="button" data-rating="4">4★</button><button type="button" data-rating="5">5★</button></div><small id="fiveRatingHistory"></small></div>
+        </article>
+
+        <article class="game-card single-game-view" id="blindChoiceGameView" hidden>
+          <div class="game-card-head"><div><div class="eyebrow">🃏 СЛІПИЙ ВИБІР</div><h2>Оберіть одну з трьох</h2><p>За кожною карткою приховано випадковий тип: дія, поза, місце, бажання або бонус.</p></div></div>
+          <div class="blind-grid" id="blindCards"></div><button class="btn secondary" id="blindResetBtn">Новий раунд</button><div class="result-box" id="blindResult" hidden></div>
+        </article>
+
+        <article class="game-card single-game-view" id="wishBattleGameView" hidden>
+          <div class="game-card-head"><div><div class="eyebrow">⚔️ БАТЛ БАЖАНЬ</div><h2>Бажання проти бажання</h2><p>Додайте 5–10 бажань від кожного гравця. Система випадково формує пару, а ви обираєте переможця.</p></div></div>
+          <div class="battle-add-grid"><form id="battleP1Form" class="inline-form"><input id="battleP1Input" maxlength="100" placeholder="Бажання гравця 1"><button class="btn secondary">Додати</button></form><form id="battleP2Form" class="inline-form"><input id="battleP2Input" maxlength="100" placeholder="Бажання гравця 2"><button class="btn secondary">Додати</button></form></div><div id="battleCounts" class="private-count"></div>
+          <button class="btn primary big-roll" id="battleStartBtn">Почати батл</button><div id="battleArena" class="battle-arena" hidden></div><div><h3>На потім</h3><div id="battleWinners" class="wish-winners"></div></div>
+        </article>
+
+        <article class="game-card single-game-view" id="eveningQuestGameView" hidden>
+          <div class="game-card-head"><div><div class="eyebrow">🌙 КВЕСТ НА ВЕЧІР</div><h2>Послідовний квест</h2><p>Етапи відкриваються по одному: місце → дія → частина тіла → поза → фінальне бажання.</p></div></div>
+          <div id="questSteps" class="quest-steps"></div><div class="quest-actions"><button class="btn primary" id="questNewBtn">Новий квест</button><button class="btn secondary" id="questNextBtn" disabled>Наступний етап</button></div>
+        </article>
       </section>
     </section>
   </main>
@@ -301,8 +366,33 @@
       </div>
       <div class="position-dialog-actions">
         <button class="btn secondary" id="revealPositionBtn">Відкрити</button>
+        <button class="btn defer-btn" id="deferPositionBtn" disabled>Відкласти</button>
         <button class="btn primary" id="completePositionBtn" disabled>Виконано ✓</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog id="deferDialog" class="dialog defer-dialog">
+    <div class="defer-modal">
+      <div class="dialog-head">
+        <div><div class="eyebrow">ВІДКЛАСТИ ПОЗУ</div><h2>Хто відкладає?</h2></div>
+        <button class="icon-btn" id="closeDeferDialog" aria-label="Закрити">×</button>
+      </div>
+      <p class="defer-note">Поза зарахується в прогрес як пройдена. Обраний гравець має виконати одне бажання партнера.</p>
+      <div id="deferPlayerChoices" class="defer-player-choices"></div>
+    </div>
+  </dialog>
+
+  <dialog id="progressDialog" class="dialog progress-dialog">
+    <div class="progress-modal">
+      <div class="dialog-head">
+        <div><div class="eyebrow">ПРОГРЕС ПАРИ</div><h2>Статистика проходження</h2></div>
+        <button class="icon-btn" id="closeProgressDialog" aria-label="Закрити">×</button>
+      </div>
+      <div id="progressOverview" class="progress-overview"></div>
+      <section class="progress-section"><h3>По рівнях</h3><div id="progressLevels" class="progress-levels"></div></section>
+      <section class="progress-section"><h3>По місяцях</h3><div id="progressMonths" class="progress-months"></div></section>
+      <section class="progress-section"><div class="section-head-row"><h3>Відкладені пози</h3><span id="deferredCountBadge" class="count-badge">0</span></div><div id="progressDeferred" class="progress-deferred"></div></section>
     </div>
   </dialog>
 
@@ -322,6 +412,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js"></script>
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
