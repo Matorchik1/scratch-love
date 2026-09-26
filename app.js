@@ -1885,7 +1885,10 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   const qtyInput=$('#purchaseQtyInput');
   const urlInput=$('#purchaseUrlInput');
   const imageInput=$('#purchaseImageInput');
-  let filter='all';
+  const formTitle=$('#purchaseFormTitle');
+  const formEyebrow=$('#purchaseFormEyebrow');
+  const submitBtn=$('#purchaseSubmitBtn');
+  let filter='all', editingId=null;
 
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const rows=()=>{try{const x=JSON.parse(pairStorage.getItem(KEY)||'[]');return Array.isArray(x)?x:[]}catch{return []}};
@@ -1898,10 +1901,32 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   const role=()=>{const r=window.SessionSync?.role;return r===0||r===1?Number(r):0};
   const players=()=>PairDB.active?.players||[{name:'Гравець 1'},{name:'Гравець 2'}];
   const localRole=()=>role();
-  const fmt=n=>new Intl.NumberFormat('uk-UA',{minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(n)||0);
+  const fmt=n=>`${new Intl.NumberFormat('uk-UA',{minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(n)||0)} гривень`;
   const plural=n=>{const a=Math.abs(n)%100,b=a%10;return a>10&&a<20?'товарів':b===1?'товар':b>=2&&b<=4?'товари':'товарів'};
   const validHttp=u=>{try{const x=new URL(u);return x.protocol==='http:'||x.protocol==='https:'}catch{return false}};
   function requireSession(){return window.requireSyncedPartnerSession?window.requireSyncedPartnerSession():!!window.SessionSync?.ready}
+  function resetFormMode(){
+    editingId=null;
+    if(formTitle)formTitle.textContent='Додати покупку';
+    if(formEyebrow)formEyebrow.textContent='НОВИЙ ТОВАР';
+    if(submitBtn)submitBtn.textContent='Додати в список';
+  }
+  function openEdit(item){
+    if(!item||Number(item.addedBy)!==localRole())return;
+    if(!requireSession())return;
+    editingId=item.id;
+    nameInput.value=item.name||'';
+    priceInput.value=Number(item.price)||0;
+    qtyInput.value=Math.max(1,Number(item.qty)||1);
+    urlInput.value=item.url||'';
+    imageInput.value=item.imageUrl||'';
+    if(formTitle)formTitle.textContent='Редагувати покупку';
+    if(formEyebrow)formEyebrow.textContent='РЕДАГУВАННЯ';
+    if(submitBtn)submitBtn.textContent='Зберегти зміни';
+    form.hidden=false;
+    nameInput?.focus();
+    form.scrollIntoView({behavior:'smooth',block:'start'});
+  }
 
   function renderTotals(items){
     const me=localRole(), partner=me===0?1:0;
@@ -1935,16 +1960,28 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       const qty=Math.max(1,Number(item.qty)||1), price=Number(item.price)||0, itemTotal=price*qty;
       const votes=item.votes&&typeof item.votes==='object'?item.votes:{};
       const myVote=votes[me]||null, partnerVote=votes[partner]||null;
-      const card=document.createElement('article');card.className='purchase-card'+(myVote==='yes'&&partnerVote==='yes'?' both-want':'');
+      const priority=['low','medium','high','urgent'].includes(item.priority)?item.priority:null;
+      const priorityLabels={low:'Низький',medium:'Середній',high:'Високий',urgent:'Дуже високий'};
+      const canSetPriority=!isMine;
+      const card=document.createElement('article');card.className='purchase-card'+(myVote==='yes'&&partnerVote==='yes'?' both-want':'')+(priority?` priority-${priority}`:'');
       const img=(item.imageUrl&&validHttp(item.imageUrl))?`<img src="${esc(item.imageUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<div class="purchase-image-placeholder">🛍️</div>';
       const productLink=(item.url&&validHttp(item.url))?`<a class="purchase-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">Відкрити товар ↗</a>`:'';
       card.innerHTML=`
         <div class="purchase-image">${img}</div>
         <div class="purchase-card-body">
           <div class="purchase-card-top"><span class="purchase-owner ${isMine?'mine':'partner'}">${isMine?'Додали ви':`Додав ${esc(ps[addedBy]?.name||'партнер')}`}</span>${myVote==='yes'&&partnerVote==='yes'?'<span class="purchase-approved">Обом потрібен ✓</span>':''}</div>
-          <h3>${esc(item.name||'Без назви')}</h3>
+          <div class="purchase-title-row"><h3>${esc(item.name||'Без назви')}</h3>${isMine?`<button type="button" class="purchase-edit-btn" data-edit-purchase="${esc(item.id)}">Редагувати</button>`:''}</div>
           <div class="purchase-price-row"><strong>${fmt(price)}</strong><span>× ${qty}</span><b>${qty>1?`= ${fmt(itemTotal)}`:''}</b></div>
           ${productLink}
+          <div class="purchase-priority">
+            <div class="purchase-priority-head"><small>Пріоритет покупки</small><strong class="priority-value ${priority||'none'}">${priority?priorityLabels[priority]:'Не визначено'}</strong></div>
+            ${canSetPriority?`<div class="purchase-priority-actions" data-purchase-priority-id="${esc(item.id)}">
+              <button type="button" class="purchase-priority-btn ${priority==='low'?'active':''}" data-priority="low">Низький</button>
+              <button type="button" class="purchase-priority-btn ${priority==='medium'?'active':''}" data-priority="medium">Середній</button>
+              <button type="button" class="purchase-priority-btn ${priority==='high'?'active':''}" data-priority="high">Високий</button>
+              <button type="button" class="purchase-priority-btn ${priority==='urgent'?'active':''}" data-priority="urgent">Дуже високий</button>
+            </div>`:`<div class="purchase-priority-note">Пріоритет виставляє ваш партнер</div>`}
+          </div>
           <div class="purchase-votes">
             <div class="purchase-vote-status"><small>Ви</small><strong class="${myVote||'none'}">${voteText(myVote)}</strong></div>
             <div class="purchase-vote-status"><small>Ваш партнер</small><strong class="${partnerVote||'none'}">${voteText(partnerVote)}</strong></div>
@@ -1959,17 +1996,43 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     });
   }
 
-  openBtn?.addEventListener('click',()=>{if(!requireSession())return;form.hidden=false;nameInput?.focus();form.scrollIntoView({behavior:'smooth',block:'start'})});
-  closeBtn?.addEventListener('click',()=>{form.hidden=true});
+  openBtn?.addEventListener('click',()=>{if(!requireSession())return;form.reset();qtyInput.value='1';resetFormMode();form.hidden=false;nameInput?.focus();form.scrollIntoView({behavior:'smooth',block:'start'})});
+  closeBtn?.addEventListener('click',()=>{form.hidden=true;form.reset();qtyInput.value='1';resetFormMode()});
   form?.addEventListener('submit',e=>{
     e.preventDefault();if(!requireSession())return;
     const name=nameInput.value.trim(), price=Number(priceInput.value), qty=Math.max(1,Math.floor(Number(qtyInput.value)||1));
     if(!name||!Number.isFinite(price)||price<0)return;
-    const item={id:'purchase_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),name,price,qty,url:urlInput.value.trim(),imageUrl:imageInput.value.trim(),addedBy:localRole(),votes:{},createdAt:Date.now()};
-    const all=rows();all.push(item);save(all,{event:{action:'add',item}});
-    form.reset();qtyInput.value='1';form.hidden=true;
+    const all=rows();
+    if(editingId){
+      const item=all.find(x=>x.id===editingId);if(!item||Number(item.addedBy)!==localRole())return;
+      item.name=name;item.price=price;item.qty=qty;item.url=urlInput.value.trim();item.imageUrl=imageInput.value.trim();item.updatedAt=Date.now();
+      const patch={name:item.name,price:item.price,qty:item.qty,url:item.url,imageUrl:item.imageUrl,updatedAt:item.updatedAt};
+      save(all,{event:{action:'edit',id:item.id,role:localRole(),patch}});
+    }else{
+      const item={id:'purchase_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),name,price,qty,url:urlInput.value.trim(),imageUrl:imageInput.value.trim(),addedBy:localRole(),votes:{},createdAt:Date.now()};
+      all.push(item);save(all,{event:{action:'add',item}});
+    }
+    form.reset();qtyInput.value='1';form.hidden=true;resetFormMode();
   });
   listEl?.addEventListener('click',e=>{
+    const editBtn=e.target.closest('[data-edit-purchase]');
+    if(editBtn){
+      const item=rows().find(x=>x.id===editBtn.dataset.editPurchase);
+      if(item)openEdit(item);
+      return;
+    }
+    const priorityBtn=e.target.closest('[data-priority]');
+    if(priorityBtn){
+      if(!requireSession())return;
+      const wrap=priorityBtn.closest('[data-purchase-priority-id]'),id=wrap?.dataset.purchasePriorityId;if(!id)return;
+      const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
+      const r=localRole();
+      if(Number(item.addedBy)===r)return;
+      const value=['low','medium','high','urgent'].includes(priorityBtn.dataset.priority)?priorityBtn.dataset.priority:null;if(!value)return;
+      item.priority=value;item.priorityBy=r;item.priorityUpdatedAt=Date.now();
+      save(all,{event:{action:'priority',id,role:r,value,updatedAt:item.priorityUpdatedAt}});
+      return;
+    }
     const btn=e.target.closest('[data-vote]');if(!btn)return;if(!requireSession())return;
     const wrap=btn.closest('[data-purchase-id]'),id=wrap?.dataset.purchaseId;if(!id)return;
     const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
@@ -1981,8 +2044,26 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   document.addEventListener('session:remote-ui',e=>{
     const m=e.detail||{};if(m.kind!=='purchase-action')return;const p=m.payload||{},all=rows();
     if(p.action==='add'&&p.item&&!all.some(x=>x.id===p.item.id)){all.push(p.item);save(all,{sync:false});return}
+    if(p.action==='edit'){
+      const item=all.find(x=>x.id===p.id);if(!item)return;
+      if(Number(item.addedBy)!==Number(p.role))return;
+      const patch=p.patch||{};
+      item.name=String(patch.name??item.name).slice(0,120);
+      item.price=Math.max(0,Number(patch.price)||0);
+      item.qty=Math.max(1,Math.floor(Number(patch.qty)||1));
+      item.url=String(patch.url??item.url??'');
+      item.imageUrl=String(patch.imageUrl??item.imageUrl??'');
+      item.updatedAt=Number(patch.updatedAt)||Date.now();
+      save(all,{sync:false});return
+    }
     if(p.action==='vote'){
-      const item=all.find(x=>x.id===p.id);if(!item)return;item.votes ||= {};item.votes[Number(p.role)]=p.value==='yes'?'yes':'no';save(all,{sync:false});
+      const item=all.find(x=>x.id===p.id);if(!item)return;item.votes ||= {};item.votes[Number(p.role)]=p.value==='yes'?'yes':'no';save(all,{sync:false});return
+    }
+    if(p.action==='priority'){
+      const item=all.find(x=>x.id===p.id);if(!item)return;
+      const value=['low','medium','high','urgent'].includes(p.value)?p.value:null;if(!value)return;
+      if(Number(item.addedBy)===Number(p.role))return;
+      item.priority=value;item.priorityBy=Number(p.role);item.priorityUpdatedAt=Number(p.updatedAt)||Date.now();save(all,{sync:false});
     }
   });
   document.addEventListener('purchases:render',render);
@@ -2049,7 +2130,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     // adding an item and voting require a synchronized partner session.
     if(target.closest('#purchasesSection')){
       if(target.closest('.purchase-filter-btn,.purchase-link,#closePurchaseFormBtn'))return false;
-      return !!target.closest('#openPurchaseFormBtn,#purchaseForm input,#purchaseForm button,.purchase-vote-btn,form');
+      return !!target.closest('#openPurchaseFormBtn,#purchaseForm input,#purchaseForm button,.purchase-vote-btn,.purchase-priority-btn,.purchase-edit-btn,form');
     }
 
     // Position scratch/reveal/defer/complete mutate shared position state; closing remains view-only.

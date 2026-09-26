@@ -165,7 +165,7 @@
       </div>
 
       <form id="purchaseForm" class="game-card purchase-form" hidden>
-        <div class="section-head-row"><div><span class="eyebrow">НОВИЙ ТОВАР</span><h2>Додати покупку</h2></div><button id="closePurchaseFormBtn" class="text-btn" type="button">Закрити ×</button></div>
+        <div class="section-head-row"><div><span class="eyebrow" id="purchaseFormEyebrow">НОВИЙ ТОВАР</span><h2 id="purchaseFormTitle">Додати покупку</h2></div><button id="closePurchaseFormBtn" class="text-btn" type="button">Закрити ×</button></div>
         <div class="purchase-form-grid">
           <label class="purchase-field purchase-title-field"><span>Назва товару</span><input id="purchaseNameInput" required maxlength="120" placeholder="Наприклад: Навушники"></label>
           <label class="purchase-field"><span>Ціна</span><input id="purchasePriceInput" required type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></label>
@@ -173,7 +173,7 @@
           <label class="purchase-field purchase-wide"><span>Посилання на товар</span><input id="purchaseUrlInput" type="url" placeholder="https://..."></label>
           <label class="purchase-field purchase-wide"><span>Посилання на картинку</span><input id="purchaseImageInput" type="url" placeholder="https://..."></label>
         </div>
-        <div class="purchase-form-actions"><button class="btn primary" type="submit">Додати в список</button></div>
+        <div class="purchase-form-actions"><button class="btn primary" id="purchaseSubmitBtn" type="submit">Додати в список</button></div>
       </form>
 
       <div class="purchases-toolbar">
@@ -513,6 +513,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js?v=27"></script>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="app.js?v=53"></script>
+  <script src="app.js?v=56"></script>
 </body>
 </html>
