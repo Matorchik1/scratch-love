@@ -81,7 +81,7 @@ const pairStorage={
     allDialog: $('#allPositionsDialog'), closeAllDialog: $('#closeAllPositionsDialog'), allGrid: $('#allPositionsGrid'),
     dialog: $('#positionDialog'), close: $('#closePositionDialog'),
     categoryTitle: $('#positionCategoryTitle'), dayTitle: $('#positionDayTitle'), image: $('#calendarPositionImage'), canvas: $('#positionScratchCanvas'),
-    instruction: $('#positionInstruction'), poseMeta: $('#positionMeta'), poseName: $('#positionPoseName'), poseDescription: $('#positionPoseDescription'), reveal: $('#revealPositionBtn'), defer: $('#deferPositionBtn'), complete: $('#completePositionBtn'), toast: $('#toast'), deferDialog: $('#deferDialog'), closeDeferDialog: $('#closeDeferDialog'), deferChoices: $('#deferPlayerChoices'), progressDialog: $('#progressDialog'), openProgress: $('#openProgressBtn'), closeProgress: $('#closeProgressDialog'), progressOverview: $('#progressOverview'), progressLevels: $('#progressLevels'), progressMonths: $('#progressMonths'), progressDeferred: $('#progressDeferred'), deferredCountBadge: $('#deferredCountBadge')
+    instruction: $('#positionInstruction'), poseMeta: $('#positionMeta'), poseName: $('#positionPoseName'), poseDescription: $('#positionPoseDescription'), reveal: $('#revealPositionBtn'), defer: $('#deferPositionBtn'), complete: $('#completePositionBtn'), toast: $('#toast'), deferDialog: $('#deferDialog'), closeDeferDialog: $('#closeDeferDialog'), deferChoices: $('#deferPlayerChoices'), progressDialog: $('#progressDialog'), openProgress: $('#openProgressBtn'), closeProgress: $('#closeProgressDialog'), progressOverview: $('#progressOverview'), progressLevels: $('#progressLevels'), progressMonths: $('#progressMonths'), progressDeferred: $('#progressDeferred'), deferredCountBadge: $('#deferredCountBadge'), progressGameDebts: $('#progressGameDebts'), gameDebtCountBadge: $('#gameDebtCountBadge')
   };
 
   // Same keys as previous MF versions: old progress is preserved.
@@ -91,6 +91,7 @@ const pairStorage={
   const DEV_UNLOCK_ALL_KEY = 'sa_position_dev_unlock_all_mf';
   const DEFERRED_KEY = 'sa_position_deferred_mf_v1';
   const HISTORY_KEY = 'sa_position_history_mf_v1';
+  const GAME_WISH_DEBTS_KEY = 'sa_game_wish_debts_v1';
   let current = null;
   let currentGlobalIndex = -1;
   let currentCategoryIndex = -1;
@@ -443,6 +444,21 @@ const pairStorage={
     const deferredList=Object.values(deferred).sort((a,b)=>new Date(b.date)-new Date(a.date));
     deferredList.forEach(info=>{ const item=ITEMS.find(x=>x.id===Number(info.id)); if(!item)return; const card=document.createElement('div'); card.className='deferred-progress-card'+(info.wishDone?' wish-done':''); card.innerHTML=`<img src="${item.image}" alt="Поза ${item.order_index}"><div><strong>Поза ${item.order_index} · ${item.poseTitle||''}</strong><span>${info.wishDone?'Бажання виконано ✓':`${info.debtorName} має виконати бажання ${info.partnerName}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`; const actions=document.createElement('div'); actions.className='deferred-card-actions'; if(!info.wishDone){ const wish=document.createElement('button'); wish.type='button'; wish.className='btn primary compact'; wish.textContent='Бажання виконано ✓'; wish.addEventListener('click',()=>{ const all=getDeferred(); if(all[info.id]){ all[info.id].wishDone=true; all[info.id].wishDoneDate=new Date().toISOString(); saveJSON(DEFERRED_KEY,all); } renderDetailedProgress(); document.dispatchEvent(new CustomEvent('progress:changed')); }); actions.appendChild(wish); } const btn=document.createElement('button'); btn.type='button'; btn.className='btn secondary compact'; btn.textContent='Відкрити'; btn.addEventListener('click',()=>{els.progressDialog.close(); const loc=findItemLocation(item); openPosition(item,loc.globalIndex,loc.catIndex,loc.localIndex,false)}); actions.appendChild(btn); card.appendChild(actions); els.progressDeferred.appendChild(card); });
     if(!deferredList.length) els.progressDeferred.innerHTML='<p class="empty-state">Відкладених поз немає.</p>';
+    const gameDebts=readJSON(GAME_WISH_DEBTS_KEY,[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+    if(els.gameDebtCountBadge) els.gameDebtCountBadge.textContent=gameDebts.filter(x=>!x.wishDone).length;
+    if(els.progressGameDebts){
+      els.progressGameDebts.innerHTML='';
+      gameDebts.forEach(info=>{
+        const card=document.createElement('div');
+        card.className='deferred-progress-card game-debt-card'+(info.wishDone?' wish-done':'');
+        const score=Array.isArray(info.score)?`${info.score[0]} : ${info.score[1]}`:'—';
+        card.innerHTML=`<div class="game-debt-icon">🏆</div><div><strong>${info.debtorName||'Гравець'} виконує бажання</strong><span>${info.wishDone?'Бажання виконано ✓':`Для ${info.partnerName||'партнера'} · рахунок ${score}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;
+        const actions=document.createElement('div');actions.className='deferred-card-actions';
+        if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>{const all=readJSON(GAME_WISH_DEBTS_KEY,[]);const row=all.find(x=>x.id===info.id);if(row){row.wishDone=true;row.wishDoneDate=new Date().toISOString();saveJSON(GAME_WISH_DEBTS_KEY,all);PairDB.save?.();window.SessionSync?.replyUI?.('game-action',{action:'game-debt-done',id:info.id,wishDoneDate:row.wishDoneDate});}renderDetailedProgress();document.dispatchEvent(new CustomEvent('progress:changed'));});actions.appendChild(wish)}
+        card.appendChild(actions);els.progressGameDebts.appendChild(card);
+      });
+      if(!gameDebts.length)els.progressGameDebts.innerHTML='<p class="empty-state">Поки немає бажань за результатами ігор.</p>';
+    }
   }
 
   els.defer?.addEventListener('click',openDeferDialog);
@@ -498,6 +514,7 @@ const pairStorage={
         CUSTOM_ACTIONS_KEY='sa_games_custom_actions_v1',
         CUSTOM_BODY_KEY='sa_games_custom_body_v1',
         HEAT_KEY='sa_games_heat_v1',
+        GAME_WISH_DEBTS_KEY='sa_game_wish_debts_v1',
         CUSTOM_PLACES_KEY='sa_places_custom_v1';
 
   // Місця витягнуті з string-resources наданого APK Scratch Adventure.
@@ -615,7 +632,29 @@ const pairStorage={
     updateRelativeGameLabels();
     renderHeatControls();
     refreshRollPermissions();
+    const pg=currentPendingFor?.();
+    if(pg?.gameKey)setResultButtonsEnabled?.(pg.gameKey,true);
   }
+  function gameDebts(){return safeParse(GAME_WISH_DEBTS_KEY,[])}
+  function saveGameDebts(rows){pairStorage.setItem(GAME_WISH_DEBTS_KEY,JSON.stringify(rows));PairDB.save?.();document.dispatchEvent(new CustomEvent('progress:changed'));}
+  function markGameDebtDone(id,syncSession=true,forcedDate=null){
+    const rows=gameDebts();const row=rows.find(x=>x.id===id);if(!row)return;
+    row.wishDone=true;row.wishDoneDate=forcedDate||new Date().toISOString();saveGameDebts(rows);
+    renderProgressPage();
+    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'game-debt-done',id,wishDoneDate:row.wishDoneDate});
+  }
+  function finishScoreRound(syncSession=true,forcedDebt=null){
+    if(!forcedDebt&&currentPendingFor()) {toast('Спочатку партнер має оцінити поточний результат');return;}
+    const score=getScore(),names=getNames();
+    if(!forcedDebt&&Number(score[0])===Number(score[1])){toast('Нічия — спочатку визначте переможця');return;}
+    const winner=forcedDebt?.partnerIndex!=null?Number(forcedDebt.partnerIndex):(Number(score[0])>Number(score[1])?0:1), loser=forcedDebt?.debtorIndex!=null?Number(forcedDebt.debtorIndex):(winner+1)%2;
+    const debt=forcedDebt||{id:'game_debt_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),type:'score',debtorIndex:loser,partnerIndex:winner,debtorName:names[loser]||`Гравець ${loser+1}`,partnerName:names[winner]||`Гравець ${winner+1}`,score:[Number(score[0])||0,Number(score[1])||0],date:new Date().toISOString(),wishDone:false};
+    const rows=gameDebts();if(!rows.some(x=>x.id===debt.id))rows.push(debt);saveGameDebts(rows.slice(-300));
+    setScore([0,0]);syncPlayers();PairDB.save?.();
+    toast(`${debt.debtorName} виконує бажання ${debt.partnerName}`);
+    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-finish',debt});
+  }
+  $('#finishScoreBtn')?.addEventListener('click',()=>{const score=getScore();if(Number(score[0])===Number(score[1])){toast('Нічия — спочатку визначте переможця');return;}if(confirm('Підвести результат? Гравець із меншим рахунком отримає бажання від переможця.'))finishScoreRound(true);});
   $('#resetScoreBtn')?.addEventListener('click',()=>{setScore([0,0]);setTurn(0);syncPlayers()});
   document.addEventListener('pair:changed',()=>syncPlayers());
 
@@ -645,8 +684,10 @@ const pairStorage={
     const pendingPassion=currentPendingFor?.('passion');
     const pendingDirect=currentPendingFor?.('direct');
     const pb=$('#passionRollBtn'), db=$('#directRollBtn');
-    if(pb){pb.disabled=rolling||!allowed||!!pendingPassion;pb.textContent=!allowed?'Хід партнера':pendingPassion?'Оцініть результат':'Кинути';}
-    if(db){db.disabled=rolling||!allowed||!!pendingDirect;db.textContent=!allowed?'Хід партнера':pendingDirect?'Оцініть результат':'Кинути';}
+    const self=getViewRole();
+    const pendingLabel=pg=>pg?(self===(Number(pg.turn)+1)%2?'Оцініть результат':'Очікуємо оцінку партнера'):null;
+    if(pb){pb.disabled=rolling||!allowed||!!pendingPassion;pb.textContent=!allowed&&!pendingPassion?'Хід партнера':pendingPassion?pendingLabel(pendingPassion):'Кинути';}
+    if(db){db.disabled=rolling||!allowed||!!pendingDirect;db.textContent=!allowed&&!pendingDirect?'Хід партнера':pendingDirect?pendingLabel(pendingDirect):'Кинути';}
     $$('#directActionChoice .choice-btn').forEach(btn=>{btn.disabled=window.SessionSync?.connected&&!allowed;});
   }
   $$('[data-heat-control] .heat-btn').forEach(btn=>btn.addEventListener('click',()=>setHeat(btn.dataset.heat,{sync:true})));
@@ -676,7 +717,7 @@ const pairStorage={
   progressTabBtn?.addEventListener('click',()=>showTab('progress'));
 
   const PAGE_DONE_KEY='sa_position_done_mf', PAGE_DEFERRED_KEY='sa_position_deferred_mf_v1', PAGE_HISTORY_KEY='sa_position_history_mf_v1';
-  const pagePoseOverview=$('#pagePoseOverview'), pagePoseLevels=$('#pagePoseLevels'), pagePlacesOverview=$('#pagePlacesOverview'), pagePlacesCategories=$('#pagePlacesCategories'), pageProgressMonths=$('#pageProgressMonths'), pageDeferredList=$('#pageDeferredList'), pageDeferredCount=$('#pageDeferredCount');
+  const pagePoseOverview=$('#pagePoseOverview'), pagePoseLevels=$('#pagePoseLevels'), pagePlacesOverview=$('#pagePlacesOverview'), pagePlacesCategories=$('#pagePlacesCategories'), pageProgressMonths=$('#pageProgressMonths'), pageDeferredList=$('#pageDeferredList'), pageDeferredCount=$('#pageDeferredCount'), pageGameDebtList=$('#pageGameDebtList'), pageGameDebtCount=$('#pageGameDebtCount');
   const POSE_LEVELS=[['Легкий',1,46],['Середній',47,105],['Важкий',106,158],['Складний',159,210],['У ванній',211,254],['У машині',255,294],['Акробатичний',295,312]];
   function pageJSON(key,fallback){try{return JSON.parse(pairStorage.getItem(key)||JSON.stringify(fallback))}catch{return fallback}}
   function renderProgressPage(){
@@ -692,6 +733,9 @@ const pairStorage={
     if(pagePlacesCategories){pagePlacesCategories.innerHTML='';cats.filter(c=>c.items.length).forEach(c=>{const count=c.items.filter(x=>marked.has(x.id)).length,pct=Math.round(count/c.items.length*100);const row=document.createElement('div');row.className='progress-level-row';row.innerHTML=`<div><strong>${c.name}</strong><span>${count}/${c.items.length}</span></div><div class="mini-progress"><span style="width:${pct}%"></span></div><b>${pct}%</b>`;pagePlacesCategories.appendChild(row)})}
     const history=pageJSON(PAGE_HISTORY_KEY,[]), months=new Map(), fmt=new Intl.DateTimeFormat('uk-UA',{month:'long',year:'numeric'}); history.forEach(ev=>{const d=new Date(ev.date);if(isNaN(d))return;const key=fmt.format(d),m=months.get(key)||{date:d,done:0,deferred:0};if(ev.status==='done')m.done++;if(ev.status==='deferred')m.deferred++;months.set(key,m)}); if(pageProgressMonths){pageProgressMonths.innerHTML='';[...months.entries()].sort((a,b)=>b[1].date-a[1].date).forEach(([label,m])=>{const row=document.createElement('div');row.className='month-row';row.innerHTML=`<strong>${label}</strong><span>Виконано: ${m.done}</span><span>Відкладено: ${m.deferred}</span>`;pageProgressMonths.appendChild(row)});if(!months.size)pageProgressMonths.innerHTML='<p class="empty-state">Поки немає історії проходження.</p>'}
     const list=Object.values(deferred).sort((a,b)=>new Date(b.date)-new Date(a.date)); if(pageDeferredCount)pageDeferredCount.textContent=list.length; if(pageDeferredList){pageDeferredList.innerHTML='';list.forEach(info=>{const item=positions.find(x=>Number(x.id)===Number(info.id));if(!item)return;const card=document.createElement('div');card.className='deferred-progress-card'+(info.wishDone?' wish-done':'');card.innerHTML=`<img src="${item.image}" alt="Поза ${item.order_index}"><div><strong>Поза ${item.order_index} · ${item.poseTitle||''}</strong><span>${info.wishDone?'Бажання виконано ✓':`${info.debtorName} має виконати бажання ${info.partnerName}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;const actions=document.createElement('div');actions.className='deferred-card-actions';if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>{const all=pageJSON(PAGE_DEFERRED_KEY,{});if(all[info.id]){all[info.id].wishDone=true;all[info.id].wishDoneDate=new Date().toISOString();pairStorage.setItem(PAGE_DEFERRED_KEY,JSON.stringify(all))}renderProgressPage();document.dispatchEvent(new CustomEvent('progress:changed'))});actions.appendChild(wish)}card.appendChild(actions);pageDeferredList.appendChild(card)});if(!list.length)pageDeferredList.innerHTML='<p class="empty-state">Відкладених поз немає.</p>'}
+    const gameDebts=pageJSON(GAME_WISH_DEBTS_KEY,[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+    if(pageGameDebtCount)pageGameDebtCount.textContent=gameDebts.filter(x=>!x.wishDone).length;
+    if(pageGameDebtList){pageGameDebtList.innerHTML='';gameDebts.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card game-debt-card'+(info.wishDone?' wish-done':'');const score=Array.isArray(info.score)?`${info.score[0]} : ${info.score[1]}`:'—';card.innerHTML=`<div class="game-debt-icon">🏆</div><div><strong>${info.debtorName||'Гравець'} виконує бажання</strong><span>${info.wishDone?'Бажання виконано ✓':`Для ${info.partnerName||'партнера'} · рахунок ${score}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;const actions=document.createElement('div');actions.className='deferred-card-actions';if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>markGameDebtDone(info.id,true));actions.appendChild(wish)}card.appendChild(actions);pageGameDebtList.appendChild(card)});if(!gameDebts.length)pageGameDebtList.innerHTML='<p class="empty-state">Поки немає бажань за результатами ігор.</p>'}
   }
   document.addEventListener('progress:changed',()=>{if(progressSection&&!progressSection.hidden)renderProgressPage()});
   const ACTIVE_GAME_KEY='sa_active_game_v2';
@@ -716,6 +760,7 @@ const pairStorage={
     gamesMenu.hidden=true; gameDetail.hidden=false;
     if(activeGameTitle) activeGameTitle.textContent=meta.title;
     if(playersPanel) playersPanel.hidden=!meta.players;
+    const scoreActions=document.querySelector('.score-actions');if(scoreActions)scoreActions.hidden=!(key==='passion'||key==='direct');
     if(rouletteCustomPanel) rouletteCustomPanel.hidden=!meta.custom;
     Object.entries(gameViews).forEach(([k,v])=>{if(v) v.hidden=k!==key});
     syncPlayers();
@@ -1214,8 +1259,18 @@ const pairStorage={
     setResultButtonsEnabled(gameKey,true);
   }
   function setResultButtonsEnabled(gameKey,enabled){
+    const pg=currentPendingFor(gameKey);
+    const evaluator=pg?(Number(pg.turn)+1)%2:null;
+    const self=getViewRole();
+    const mayEvaluate=!!enabled && pg && self===evaluator;
     const ids=gameKey==='passion'?['passionDoneBtn','passionNoBtn']:gameKey==='direct'?['directDoneBtn','directNoBtn']:[];
-    ids.forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!enabled});
+    ids.forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!mayEvaluate});
+    const note=gameKey==='passion'?$('#passionEvaluatorNote'):gameKey==='direct'?$('#directEvaluatorNote'):null;
+    if(note){
+      if(!pg)note.textContent='';
+      else if(mayEvaluate)note.textContent='Оцініть виконання партнера';
+      else note.textContent=`Оцінює ${participantLabel(evaluator,true)}`;
+    }
   }
   function currentPendingFor(gameKey){
     let pg=pendingGame;
@@ -1268,8 +1323,8 @@ const pairStorage={
     }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;refreshRollPermissions()}
   }
   $('#passionRollBtn')?.addEventListener('click',()=>runPassionRoll());
-  $('#passionDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(true)});
-  $('#passionNoBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(false)});
+  $('#passionDoneBtn')?.addEventListener('click',()=>{const pg=currentPendingFor('passion');if(pg&&getViewRole()===(Number(pg.turn)+1)%2)resolveResult(true)});
+  $('#passionNoBtn')?.addEventListener('click',()=>{const pg=currentPendingFor('passion');if(pg&&getViewRole()===(Number(pg.turn)+1)%2)resolveResult(false)});
 
   $$('#directActionChoice .choice-btn').forEach(btn=>btn.addEventListener('click',()=>{
     if(window.SessionSync?.connected&&!currentLocalTurnAllowed()){toast('Зараз хід партнера');return;}
@@ -1306,8 +1361,8 @@ const pairStorage={
     }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;refreshRollPermissions()}
   }
   $('#directRollBtn')?.addEventListener('click',()=>runDirectRoll());
-  $('#directDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(true)});
-  $('#directNoBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(false)});
+  $('#directDoneBtn')?.addEventListener('click',()=>{const pg=currentPendingFor('direct');if(pg&&getViewRole()===(Number(pg.turn)+1)%2)resolveResult(true)});
+  $('#directNoBtn')?.addEventListener('click',()=>{const pg=currentPendingFor('direct');if(pg&&getViewRole()===(Number(pg.turn)+1)%2)resolveResult(false)});
 
   function refreshPendingResult(){
     // Do not let a delayed pair/snapshot write replace the result that has just
@@ -1337,6 +1392,8 @@ const pairStorage={
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
       if(a==='direct-roll'){if(m.payload.heat)setHeat(m.payload.heat,{sync:false});openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
       if(a==='score-resolve'){resolveResult(!!m.payload.completed,false,{gameKey:m.payload.gameKey,turn:m.payload.turn,score:m.payload.score,nextTurn:m.payload.nextTurn});}
+      if(a==='score-finish'&&m.payload.debt){finishScoreRound(false,m.payload.debt);}
+      if(a==='game-debt-done'&&m.payload.id){markGameDebtDone(m.payload.id,false,m.payload.wishDoneDate||null);}
       if(a==='random-pose-levels'){
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
         if(document.body.dataset.activeGame==='randomPose')renderRandomLevelFilter();

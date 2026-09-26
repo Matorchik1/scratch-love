@@ -154,6 +154,7 @@
       </div>
       <article class="game-card"><div class="section-head-row"><h2>По місяцях</h2></div><div id="pageProgressMonths" class="progress-months"></div></article>
       <article class="game-card"><div class="section-head-row"><h2>Відкладені пози та бажання</h2><span id="pageDeferredCount" class="count-badge">0</span></div><div id="pageDeferredList" class="progress-deferred"></div></article>
+      <article class="game-card"><div class="section-head-row"><h2>Бажання за результатами ігор</h2><span id="pageGameDebtCount" class="count-badge">0</span></div><p class="muted">Після «Підвести результат» гравець із меншим рахунком виконує бажання переможця.</p><div id="pageGameDebtList" class="progress-deferred game-debt-list"></div></article>
     </section>
 
     <section id="gamesSection" class="games-section" hidden>
@@ -209,7 +210,7 @@
             <strong id="partnerPlayerName">—</strong>
             <span id="partnerPlayerGender">—</span>
           </div>
-          <button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button>
+          <div class="score-actions"><button id="finishScoreBtn" class="btn primary compact" type="button">Підвести результат</button><button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button></div>
         </section>
 
         <details id="rouletteCustomPanel" class="custom-options-card" hidden>
@@ -274,7 +275,7 @@
           <div class="result-box" id="passionResultBox" hidden>
             <small id="passionTurnLabel"></small>
             <strong id="passionResult">—</strong>
-            <div class="result-actions"><button class="btn primary" id="passionDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="passionNoBtn" type="button">Ні</button></div>
+            <small class="result-evaluator-note" id="passionEvaluatorNote"></small><div class="result-actions"><button class="btn primary" id="passionDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="passionNoBtn" type="button">Ні</button></div>
           </div>
         </article>
 
@@ -307,7 +308,7 @@
           <div class="result-box" id="directResultBox" hidden>
             <small id="directTurnLabel"></small>
             <strong id="directResult">—</strong>
-            <div class="result-actions"><button class="btn primary" id="directDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="directNoBtn" type="button">Ні</button></div>
+            <small class="result-evaluator-note" id="directEvaluatorNote"></small><div class="result-actions"><button class="btn primary" id="directDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="directNoBtn" type="button">Ні</button></div>
           </div>
         </article>
 
@@ -431,6 +432,7 @@
       <section class="progress-section"><h3>По рівнях</h3><div id="progressLevels" class="progress-levels"></div></section>
       <section class="progress-section"><h3>По місяцях</h3><div id="progressMonths" class="progress-months"></div></section>
       <section class="progress-section"><div class="section-head-row"><h3>Відкладені пози</h3><span id="deferredCountBadge" class="count-badge">0</span></div><div id="progressDeferred" class="progress-deferred"></div></section>
+      <section class="progress-section"><div class="section-head-row"><h3>Бажання за результатами ігор</h3><span id="gameDebtCountBadge" class="count-badge">0</span></div><div id="progressGameDebts" class="progress-deferred game-debt-list"></div></section>
     </div>
   </dialog>
 
@@ -451,6 +453,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js?v=27"></script>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="app.js?v=43"></script>
+  <script src="app.js?v=44"></script>
 </body>
 </html>
