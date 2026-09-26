@@ -515,6 +515,7 @@ const pairStorage={
         CUSTOM_BODY_KEY='sa_games_custom_body_v1',
         HEAT_KEY='sa_games_heat_v1',
         GAME_WISH_DEBTS_KEY='sa_game_wish_debts_v1',
+        SCORE_FINISH_PROPOSAL_KEY='sa_score_finish_proposal_v1',
         CUSTOM_PLACES_KEY='sa_places_custom_v1';
 
   // Місця витягнуті з string-resources наданого APK Scratch Adventure.
@@ -632,6 +633,7 @@ const pairStorage={
     updateRelativeGameLabels();
     renderHeatControls();
     refreshRollPermissions();
+    renderScoreFinishProposal?.();
     const pg=currentPendingFor?.();
     if(pg?.gameKey)setResultButtonsEnabled?.(pg.gameKey,true);
   }
@@ -643,19 +645,69 @@ const pairStorage={
     renderProgressPage();
     if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'game-debt-done',id,wishDoneDate:row.wishDoneDate});
   }
-  function finishScoreRound(syncSession=true,forcedDebt=null){
-    if(!forcedDebt&&currentPendingFor()) {toast('Спочатку партнер має оцінити поточний результат');return;}
-    const score=getScore(),names=getNames();
-    if(!forcedDebt&&Number(score[0])===Number(score[1])){toast('Нічия — спочатку визначте переможця');return;}
-    const winner=forcedDebt?.partnerIndex!=null?Number(forcedDebt.partnerIndex):(Number(score[0])>Number(score[1])?0:1), loser=forcedDebt?.debtorIndex!=null?Number(forcedDebt.debtorIndex):(winner+1)%2;
-    const debt=forcedDebt||{id:'game_debt_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),type:'score',debtorIndex:loser,partnerIndex:winner,debtorName:names[loser]||`Гравець ${loser+1}`,partnerName:names[winner]||`Гравець ${winner+1}`,score:[Number(score[0])||0,Number(score[1])||0],date:new Date().toISOString(),wishDone:false};
-    const rows=gameDebts();if(!rows.some(x=>x.id===debt.id))rows.push(debt);saveGameDebts(rows.slice(-300));
-    setScore([0,0]);syncPlayers();PairDB.save?.();
-    toast(`${debt.debtorName} виконує бажання ${debt.partnerName}`);
-    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-finish',debt});
+
+  const scoreFinishModal=$('#scoreFinishModal'), scoreFinishSummary=$('#scoreFinishSummary'),
+        scoreFinishSelfVote=$('#scoreFinishSelfVote'), scoreFinishPartnerVote=$('#scoreFinishPartnerVote'),
+        scoreFinishHint=$('#scoreFinishHint'), scoreFinishAgreeBtn=$('#scoreFinishAgreeBtn'), scoreFinishRejectBtn=$('#scoreFinishRejectBtn');
+  function getScoreFinishProposal(){
+    try{return JSON.parse(pairStorage.getItem(SCORE_FINISH_PROPOSAL_KEY)||'null')}catch{return null}
   }
-  $('#finishScoreBtn')?.addEventListener('click',()=>{const score=getScore();if(Number(score[0])===Number(score[1])){toast('Нічия — спочатку визначте переможця');return;}if(confirm('Підвести результат? Гравець із меншим рахунком отримає бажання від переможця.'))finishScoreRound(true);});
-  $('#resetScoreBtn')?.addEventListener('click',()=>{setScore([0,0]);setTurn(0);syncPlayers()});
+  function setScoreFinishProposal(proposal){
+    if(proposal)pairStorage.setItem(SCORE_FINISH_PROPOSAL_KEY,JSON.stringify(proposal));
+    else pairStorage.removeItem(SCORE_FINISH_PROPOSAL_KEY);
+    PairDB.save?.();
+    renderScoreFinishProposal();
+    refreshRollPermissions?.();
+  }
+  function renderScoreFinishProposal(){
+    if(!scoreFinishModal)return;
+    const proposal=getScoreFinishProposal();
+    if(!proposal){scoreFinishModal.hidden=true;return;}
+    const names=getNames(), self=getViewRole(), partner=(self+1)%2;
+    const score=Array.isArray(proposal.score)?proposal.score:[0,0];
+    const winner=Number(score[0])>Number(score[1])?0:1, loser=(winner+1)%2;
+    scoreFinishModal.hidden=false;
+    if(scoreFinishSummary)scoreFinishSummary.textContent=`${names[0]||'Гравець 1'} ${score[0]||0} : ${score[1]||0} ${names[1]||'Гравець 2'} · ${names[loser]||'Гравець'} виконує бажання ${names[winner]||'партнера'}`;
+    const approvals=Array.isArray(proposal.approvals)?proposal.approvals:[false,false];
+    if(scoreFinishSelfVote){scoreFinishSelfVote.querySelector('span').textContent=`Ви — ${names[self]||('Гравець '+(self+1))}`;scoreFinishSelfVote.querySelector('strong').textContent=approvals[self]?'Погоджено ✓':'Очікує';scoreFinishSelfVote.classList.toggle('approved',!!approvals[self]);}
+    if(scoreFinishPartnerVote){scoreFinishPartnerVote.querySelector('span').textContent=`Ваш партнер — ${names[partner]||('Гравець '+(partner+1))}`;scoreFinishPartnerVote.querySelector('strong').textContent=approvals[partner]?'Погоджено ✓':'Очікує';scoreFinishPartnerVote.classList.toggle('approved',!!approvals[partner]);}
+    if(scoreFinishAgreeBtn){scoreFinishAgreeBtn.disabled=!!approvals[self];scoreFinishAgreeBtn.textContent=approvals[self]?'Ви погодились ✓':'Погодитись';}
+    if(scoreFinishHint)scoreFinishHint.textContent=approvals[self]&&!approvals[partner]?'Очікуємо рішення партнера…':(!approvals[self]&&approvals[partner]?'Партнер уже погодився. Потрібне ваше підтвердження.':'Для завершення мають погодитися обидва.');
+  }
+  function finalizeScoreProposal(proposal){
+    if(!proposal)return;
+    const current=getScoreFinishProposal();
+    if(current&&current.id!==proposal.id)return;
+    const score=Array.isArray(proposal.score)?proposal.score:[0,0], names=getNames();
+    if(Number(score[0])===Number(score[1])){setScoreFinishProposal(null);toast('Нічия — результат не підведено');return;}
+    const winner=Number(score[0])>Number(score[1])?0:1, loser=(winner+1)%2;
+    const debt={id:'game_debt_'+proposal.id,type:'score',debtorIndex:loser,partnerIndex:winner,debtorName:names[loser]||`Гравець ${loser+1}`,partnerName:names[winner]||`Гравець ${winner+1}`,score:[Number(score[0])||0,Number(score[1])||0],date:new Date().toISOString(),wishDone:false};
+    const rows=gameDebts();if(!rows.some(x=>x.id===debt.id))rows.push(debt);saveGameDebts(rows.slice(-300));
+    setScore([0,0]);setScoreFinishProposal(null);syncPlayers();PairDB.save?.();renderProgressPage();
+    toast(`${debt.debtorName} виконує бажання ${debt.partnerName}`);
+  }
+  function proposeScoreFinish(syncSession=true,forcedProposal=null){
+    if(!forcedProposal&&currentPendingFor()){toast('Спочатку партнер має оцінити поточний результат');return;}
+    const score=forcedProposal?.score||getScore();
+    if(Number(score[0])===Number(score[1])){toast('Нічия — спочатку визначте переможця');return;}
+    if(!forcedProposal&&!window.SessionSync?.connected){toast('Для спільного підтвердження підключіть партнера до сесії');return;}
+    const existing=getScoreFinishProposal();
+    const proposal=forcedProposal||existing||{id:'score_finish_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),score:[Number(score[0])||0,Number(score[1])||0],approvals:[false,false],requestedBy:getViewRole(),createdAt:new Date().toISOString()};
+    setScoreFinishProposal(proposal);
+    if(syncSession&&window.SessionSync?.connected&&!forcedProposal)window.SessionSync.replyUI?.('game-action',{action:'score-finish-propose',proposal});
+  }
+  function voteScoreFinish(agree,syncSession=true,forcedRole=null,proposalId=null){
+    const proposal=getScoreFinishProposal();if(!proposal|| (proposalId&&proposal.id!==proposalId))return;
+    if(!agree){const id=proposal.id;setScoreFinishProposal(null);if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-finish-reject',proposalId:id});toast('Підведення результату скасовано');return;}
+    const role=(forcedRole===0||forcedRole===1)?Number(forcedRole):getViewRole();
+    proposal.approvals=Array.isArray(proposal.approvals)?proposal.approvals:[false,false];proposal.approvals[role]=true;setScoreFinishProposal(proposal);
+    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-finish-vote',proposalId:proposal.id,role,agree:true});
+    if(proposal.approvals[0]&&proposal.approvals[1])finalizeScoreProposal(proposal);
+  }
+  $('#finishScoreBtn')?.addEventListener('click',()=>proposeScoreFinish(true));
+  scoreFinishAgreeBtn?.addEventListener('click',()=>voteScoreFinish(true,true));
+  scoreFinishRejectBtn?.addEventListener('click',()=>voteScoreFinish(false,true));
+  $('#resetScoreBtn')?.addEventListener('click',()=>{if(getScoreFinishProposal()){toast('Спочатку завершіть або відхиліть підведення результату');return;}setScore([0,0]);setTurn(0);syncPlayers()});
   document.addEventListener('pair:changed',()=>syncPlayers());
 
   function updateRelativeGameLabels(){
@@ -683,12 +735,13 @@ const pairStorage={
     const allowed=currentLocalTurnAllowed();
     const pendingPassion=currentPendingFor?.('passion');
     const pendingDirect=currentPendingFor?.('direct');
+    const scoreFinishPending=!!getScoreFinishProposal?.();
     const pb=$('#passionRollBtn'), db=$('#directRollBtn');
     const self=getViewRole();
     const pendingLabel=pg=>pg?(self===(Number(pg.turn)+1)%2?'Оцініть результат':'Очікуємо оцінку партнера'):null;
-    if(pb){pb.disabled=rolling||!allowed||!!pendingPassion;pb.textContent=!allowed&&!pendingPassion?'Хід партнера':pendingPassion?pendingLabel(pendingPassion):'Кинути';}
-    if(db){db.disabled=rolling||!allowed||!!pendingDirect;db.textContent=!allowed&&!pendingDirect?'Хід партнера':pendingDirect?pendingLabel(pendingDirect):'Кинути';}
-    $$('#directActionChoice .choice-btn').forEach(btn=>{btn.disabled=window.SessionSync?.connected&&!allowed;});
+    if(pb){pb.disabled=rolling||!allowed||!!pendingPassion||scoreFinishPending;pb.textContent=scoreFinishPending?'Підводимо результат…':(!allowed&&!pendingPassion?'Хід партнера':pendingPassion?pendingLabel(pendingPassion):'Кинути');}
+    if(db){db.disabled=rolling||!allowed||!!pendingDirect||scoreFinishPending;db.textContent=scoreFinishPending?'Підводимо результат…':(!allowed&&!pendingDirect?'Хід партнера':pendingDirect?pendingLabel(pendingDirect):'Кинути');}
+    $$('#directActionChoice .choice-btn').forEach(btn=>{btn.disabled=scoreFinishPending||(window.SessionSync?.connected&&!allowed);});
   }
   $$('[data-heat-control] .heat-btn').forEach(btn=>btn.addEventListener('click',()=>setHeat(btn.dataset.heat,{sync:true})));
   renderHeatControls();
@@ -1392,7 +1445,9 @@ const pairStorage={
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
       if(a==='direct-roll'){if(m.payload.heat)setHeat(m.payload.heat,{sync:false});openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
       if(a==='score-resolve'){resolveResult(!!m.payload.completed,false,{gameKey:m.payload.gameKey,turn:m.payload.turn,score:m.payload.score,nextTurn:m.payload.nextTurn});}
-      if(a==='score-finish'&&m.payload.debt){finishScoreRound(false,m.payload.debt);}
+      if(a==='score-finish-propose'&&m.payload.proposal){proposeScoreFinish(false,m.payload.proposal);}
+      if(a==='score-finish-vote'&&m.payload.proposalId){voteScoreFinish(true,false,Number(m.payload.role),m.payload.proposalId);}
+      if(a==='score-finish-reject'&&m.payload.proposalId){const p=getScoreFinishProposal();if(p?.id===m.payload.proposalId){setScoreFinishProposal(null);toast('Партнер відхилив підведення результату');}}
       if(a==='game-debt-done'&&m.payload.id){markGameDebtDone(m.payload.id,false,m.payload.wishDoneDate||null);}
       if(a==='random-pose-levels'){
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});

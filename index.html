@@ -167,6 +167,7 @@
       </header>
 
       <section id="gamesMenu" class="games-menu">
+        <div class="games-group-header games-group-points"><span>🏆</span><div><strong>Ігри з поінтами</strong><small>Виконуйте завдання, заробляйте бали та підводьте спільний результат</small></div></div>
         <button class="game-launch-card" data-game="passion" type="button">
           <span class="game-launch-icon" aria-hidden="true"><img src="images/ui/game_icons/passion.png" alt=""></span>
           <span><strong>Рулетка Страсті</strong><small>Дія + частина тіла, по черзі для двох</small></span>
@@ -177,6 +178,7 @@
           <span><strong>Прямолінійний кубик</strong><small>Оберіть дію та прокрутіть частини тіла</small></span>
           <span class="game-launch-arrow">›</span>
         </button>
+        <div class="games-group-header games-group-no-points"><span>✨</span><div><strong>Ігри без поінтів</strong><small>Для випадкового вибору, сценаріїв, бажань і спільних квестів</small></div></div>
         <button class="game-launch-card" data-game="randomPose" type="button">
           <span class="game-launch-icon" aria-hidden="true"><img src="images/ui/game_icons/random_pose.png" alt=""></span>
           <span><strong>Випадкова поза</strong><small>Крутіть колесо та отримайте випадкову MF-позу</small></span>
@@ -212,6 +214,23 @@
           </div>
           <div class="score-actions"><button id="finishScoreBtn" class="btn primary compact" type="button">Підвести результат</button><button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button></div>
         </section>
+
+        <div id="scoreFinishModal" class="score-finish-modal" hidden>
+          <div class="score-finish-dialog" role="dialog" aria-modal="true" aria-labelledby="scoreFinishTitle">
+            <div class="score-finish-icon">🏆</div>
+            <h3 id="scoreFinishTitle">Підвести результат?</h3>
+            <p id="scoreFinishSummary">—</p>
+            <div class="score-finish-votes">
+              <div class="score-finish-vote" id="scoreFinishSelfVote"><span>Ви</span><strong>Очікує</strong></div>
+              <div class="score-finish-vote" id="scoreFinishPartnerVote"><span>Ваш партнер</span><strong>Очікує</strong></div>
+            </div>
+            <p id="scoreFinishHint" class="muted">Для завершення мають погодитися обидва.</p>
+            <div class="score-finish-actions">
+              <button id="scoreFinishAgreeBtn" class="btn primary" type="button">Погодитись</button>
+              <button id="scoreFinishRejectBtn" class="btn secondary" type="button">Відхилити</button>
+            </div>
+          </div>
+        </div>
 
         <details id="rouletteCustomPanel" class="custom-options-card" hidden>
           <summary>＋ Власні варіанти рулеток</summary>
@@ -453,6 +472,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js?v=27"></script>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="app.js?v=44"></script>
+  <script src="app.js?v=47"></script>
 </body>
 </html>
