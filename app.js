@@ -941,7 +941,10 @@ const pairStorage={
   const waitUntil=async ts=>{const ms=Number(ts||0)-Date.now();if(ms>2)await new Promise(r=>setTimeout(r,ms));};
   function setRandomSpinButtonBusy(busy){const button=$('#randomPoseSpinBtn');if(button)button.disabled=!!busy;}
   async function runRandomPoseSpin(forcedOrder=null,remote=false,startAt=null,forcedTurn=null){
-    const pool=getRandomPosePool();if(randomPoseBusy||!pool.length)return;
+    const pool=getRandomPosePool();
+    if(!pool.length)return null;
+    if(randomPoseBusy && !remote)return null;
+    if(remote) randomPoseBusy=false;
     const button=$('#randomPoseSpinBtn');randomPoseBusy=true;if(button)button.disabled=true;if(randomPoseResultBox)randomPoseResultBox.hidden=true;
     try{
       await preloadPosePool(pool);
@@ -955,6 +958,7 @@ const pairStorage={
       const frames=pool.map((_,i)=>pool[(targetIndex+i*17)%pool.length]);let frameIndex=0;const start=performance.now(),duration=3050;
       await new Promise(resolve=>{const tick=now=>{const t=Math.min(1,(now-start)/duration),delay=55+Math.floor(210*t*t);setRandomPose(frames[frameIndex++%frames.length]);if(t>=1){resolve();return}setTimeout(()=>requestAnimationFrame(tick),delay)};requestAnimationFrame(tick)});
       setRandomPose(target);if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${target.order_index}`;if(randomPoseResult)randomPoseResult.textContent=target.poseTitle||(`Поза ${target.order_index}`);if(randomPoseDescription)randomPoseDescription.textContent=target.poseDescription||'';if(randomPoseResultBox)randomPoseResultBox.hidden=false;
+      return target;
     }finally{randomPoseBusy=false;if(button)button.disabled=false}
   }
   async function beginSyncedRandomPoseSpin(){
@@ -1064,7 +1068,9 @@ const pairStorage={
           p.started=true;
           const startAt=Date.now()+700;
           window.SessionSync?.sendUI?.('game-action',{action:'random-pose-start',spinId:m.payload.spinId,startAt,order:p.target,turn:p.turn,ids:p.ids});
-          runRandomPoseSpin(p.target,false,startAt,p.turn).finally(()=>{randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false)});
+          runRandomPoseSpin(p.target,false,startAt,p.turn).then(target=>{
+            if(target) window.SessionSync?.sendUI?.('game-action',{action:'random-pose-result',spinId:m.payload.spinId,order:target.order_index,ids:p.ids});
+          }).finally(()=>{randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false)});
         }
       }
       if(a==='random-pose-start'){
@@ -1072,6 +1078,19 @@ const pairStorage={
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
         const p=randomSpinPending.get(m.payload.spinId)||{};p.started=true;randomSpinPending.set(m.payload.spinId,p);
         runRandomPoseSpin(m.payload.order,true,m.payload.startAt,m.payload.turn).finally(()=>{randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false)});
+      }
+      if(a==='random-pose-result'){
+        openGame('randomPose',false);
+        applyRandomPoseLevels(m.payload.ids||[],{sync:false});
+        const item=RANDOM_POSITIONS.find(x=>Number(x.order_index)===Number(m.payload.order));
+        if(item){
+          setRandomPose(item);
+          if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${item.order_index}`;
+          if(randomPoseResult)randomPoseResult.textContent=item.poseTitle||(`Поза ${item.order_index}`);
+          if(randomPoseDescription)randomPoseDescription.textContent=item.poseDescription||'';
+          if(randomPoseResultBox)randomPoseResultBox.hidden=false;
+        }
+        randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false);
       }
     }
   });
