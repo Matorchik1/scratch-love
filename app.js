@@ -681,12 +681,18 @@ const pairStorage={
     if(!proposal){scoreFinishModal.hidden=true;return;}
     const names=getNames(), self=getViewRole(), partner=(self+1)%2;
     const score=Array.isArray(proposal.score)?proposal.score:[0,0];
-    const winner=Number(score[0])>Number(score[1])?0:1, loser=(winner+1)%2;
+    const isTie=Number(score[0])===Number(score[1]);
+    const winner=isTie?null:(Number(score[0])>Number(score[1])?0:1), loser=isTie?null:(winner+1)%2;
     scoreFinishModal.hidden=false;
-    if(scoreFinishSummary)scoreFinishSummary.textContent=`${names[0]||'Гравець 1'} ${score[0]||0} : ${score[1]||0} ${names[1]||'Гравець 2'} · ${names[loser]||'Гравець'} виконує бажання ${names[winner]||'партнера'}`;
+    if(scoreFinishSummary){
+      scoreFinishSummary.textContent=isTie
+        ? `${names[0]||'Гравець 1'} ${score[0]||0} : ${score[1]||0} ${names[1]||'Гравець 2'} · Нічия. Завершити раунд без боргу бажання?`
+        : `${names[0]||'Гравець 1'} ${score[0]||0} : ${score[1]||0} ${names[1]||'Гравець 2'} · ${names[loser]||'Гравець'} виконує бажання ${names[winner]||'партнера'}`;
+    }
     const approvals=Array.isArray(proposal.approvals)?proposal.approvals:[false,false];
     if(scoreFinishSelfVote){scoreFinishSelfVote.querySelector('span').textContent=`Ви — ${names[self]||('Гравець '+(self+1))}`;scoreFinishSelfVote.querySelector('strong').textContent=approvals[self]?'Погоджено ✓':'Очікує';scoreFinishSelfVote.classList.toggle('approved',!!approvals[self]);}
     if(scoreFinishPartnerVote){scoreFinishPartnerVote.querySelector('span').textContent=`Ваш партнер — ${names[partner]||('Гравець '+(partner+1))}`;scoreFinishPartnerVote.querySelector('strong').textContent=approvals[partner]?'Погоджено ✓':'Очікує';scoreFinishPartnerVote.classList.toggle('approved',!!approvals[partner]);}
+    const title=$('#scoreFinishTitle');if(title)title.textContent=isTie?'Підтвердити нічию?':'Підвести результат?';
     if(scoreFinishAgreeBtn){scoreFinishAgreeBtn.disabled=!!approvals[self];scoreFinishAgreeBtn.textContent=approvals[self]?'Ви погодились ✓':'Погодитись';}
     if(scoreFinishHint)scoreFinishHint.textContent=approvals[self]&&!approvals[partner]?'Очікуємо рішення партнера…':(!approvals[self]&&approvals[partner]?'Партнер уже погодився. Потрібне ваше підтвердження.':'Для завершення мають погодитися обидва.');
   }
@@ -695,17 +701,40 @@ const pairStorage={
     const current=getScoreFinishProposal();
     if(current&&current.id!==proposal.id)return;
     const score=Array.isArray(proposal.score)?proposal.score:[0,0], names=getNames();
-    if(Number(score[0])===Number(score[1])){setScoreFinishProposal(null);toast('Нічия — результат не підведено');return;}
+    if(Number(score[0])===Number(score[1])){
+      setScore([0,0]);
+      setScoreFinishProposal(null);
+      syncPlayers();
+      PairDB.save?.();
+      toast('Нічия підтверджена · рахунок скинуто');
+      return;
+    }
     const winner=Number(score[0])>Number(score[1])?0:1, loser=(winner+1)%2;
     const debt={id:'game_debt_'+proposal.id,type:'score',debtorIndex:loser,partnerIndex:winner,debtorName:names[loser]||`Гравець ${loser+1}`,partnerName:names[winner]||`Гравець ${winner+1}`,score:[Number(score[0])||0,Number(score[1])||0],date:new Date().toISOString(),wishDone:false};
     const rows=gameDebts();if(!rows.some(x=>x.id===debt.id))rows.push(debt);saveGameDebts(rows.slice(-300));
     setScore([0,0]);setScoreFinishProposal(null);syncPlayers();PairDB.save?.();renderProgressPage();
     toast(`${debt.debtorName} виконує бажання ${debt.partnerName}`);
   }
+  function focusPendingEvaluation(pg){
+    if(!pg?.gameKey)return;
+    openGame(pg.gameKey,false);
+    refreshPendingResult?.();
+    const box=pg.gameKey==='passion'?$('#passionResultBox'):pg.gameKey==='direct'?$('#directResultBox'):null;
+    if(box){
+      box.hidden=false;
+      box.classList.remove('pending-attention');
+      void box.offsetWidth;
+      box.classList.add('pending-attention');
+      setTimeout(()=>box.classList.remove('pending-attention'),1800);
+      setTimeout(()=>box.scrollIntoView({behavior:'smooth',block:'center'}),60);
+    }
+    const evaluator=(Number(pg.turn)+1)%2;
+    toast(getViewRole()===evaluator?'Оцініть попередній результат':'Очікується оцінка партнера');
+  }
   function proposeScoreFinish(syncSession=true,forcedProposal=null){
-    if(!forcedProposal&&currentPendingFor()){toast('Спочатку партнер має оцінити поточний результат');return;}
+    const pending=!forcedProposal?currentPendingFor():null;
+    if(pending){focusPendingEvaluation(pending);return;}
     const score=forcedProposal?.score||getScore();
-    if(Number(score[0])===Number(score[1])){toast('Нічия — спочатку визначте переможця');return;}
     if(!forcedProposal&&!window.SessionSync?.connected){toast('Для спільного підтвердження підключіть партнера до сесії');return;}
     const existing=getScoreFinishProposal();
     const proposal=forcedProposal||existing||{id:'score_finish_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),score:[Number(score[0])||0,Number(score[1])||0],approvals:[false,false],requestedBy:getViewRole(),createdAt:new Date().toISOString()};
