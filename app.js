@@ -1,4 +1,4 @@
-// ===== v9: IndexedDB pair profiles (no localStorage) =====
+// ===== v32: pair profiles + stable realtime game sync =====
 const PairDB = (() => {
   const DB='scratch_love_db_v1', STORE='pairs', META='meta';
   let db=null, active=null, saveTimer=null;
@@ -595,10 +595,12 @@ const pairStorage={
   function showTab(which, syncSession=true){
     calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(progressSection)progressSection.hidden=which!=='progress';
     calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); progressTabBtn?.classList.toggle('active',which==='progress');
-    if(syncSession) pairStorage.setItem('sa_main_tab_v1',which);
+    if(syncSession && !window.SessionSync?.connected) pairStorage.setItem('sa_main_tab_v1',which);
     document.body.dataset.mainTab=which;
     if(which==='games'){
-      const savedGame=pairStorage.getItem(ACTIVE_GAME_KEY);
+      const connected=!!window.SessionSync?.connected;
+      const runtimeGame=document.body.dataset.activeGame;
+      const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):pairStorage.getItem(ACTIVE_GAME_KEY);
       if(savedGame && gameMeta[savedGame]) openGame(savedGame,syncSession);
       else showGamesMenu(syncSession,false);
     }
@@ -638,7 +640,7 @@ const pairStorage={
     if(rouletteCustomPanel) rouletteCustomPanel.hidden=true;
     delete document.body.dataset.activeGame;
     document.body.dataset.gameMenu='1';
-    if(clearState && syncSession) pairStorage.removeItem(ACTIVE_GAME_KEY);
+    if(clearState && syncSession && !window.SessionSync?.connected) pairStorage.removeItem(ACTIVE_GAME_KEY);
     if(syncSession) window.SessionSync?.sendUI?.('game-menu',{});
   }
   function openGame(key, syncSession=true){
@@ -655,7 +657,7 @@ const pairStorage={
     if(key==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}
     document.body.dataset.activeGame=key;
     delete document.body.dataset.gameMenu;
-    if(syncSession) pairStorage.setItem(ACTIVE_GAME_KEY,key);
+    if(syncSession && !window.SessionSync?.connected) pairStorage.setItem(ACTIVE_GAME_KEY,key);
     if(syncSession) window.SessionSync?.sendUI?.('game',{key});
   }
   $$('.game-launch-card').forEach(btn=>btn.addEventListener('click',()=>openGame(btn.dataset.game)));
@@ -937,60 +939,67 @@ const pairStorage={
     if(randomPoseCaption) randomPoseCaption.textContent=item.poseTitle || ('Поза ' + item.order_index);
   }
   function resetRandomPosePreview(){ const pool=getRandomPosePool(); if(randomPoseResultBox)randomPoseResultBox.hidden=true; setRandomPose(pool.includes(randomPoseCurrent)?randomPoseCurrent:(pool[0]||RANDOM_POSITIONS[0])); }
-  const randomSpinPending=new Map();
+  let lastRandomPoseResult=randomPoseCurrent;
   const waitUntil=async ts=>{const ms=Number(ts||0)-Date.now();if(ms>2)await new Promise(r=>setTimeout(r,ms));};
   function setRandomSpinButtonBusy(busy){const button=$('#randomPoseSpinBtn');if(button)button.disabled=!!busy;}
-  async function runRandomPoseSpin(forcedOrder=null,remote=false,startAt=null,forcedTurn=null){
+  function applyRandomPoseResult(item){
+    if(!item)return;
+    lastRandomPoseResult=item;
+    setRandomPose(item);
+    if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${item.order_index}`;
+    if(randomPoseResult)randomPoseResult.textContent=item.poseTitle||(`Поза ${item.order_index}`);
+    if(randomPoseDescription)randomPoseDescription.textContent=item.poseDescription||'Опис цієї пози поки відсутній.';
+    if(randomPoseResultBox)randomPoseResultBox.hidden=false;
+  }
+  function buildSpinFrames(pool,target,count=18){
+    if(!pool.length)return [];
+    const idx=Math.max(0,pool.findIndex(x=>Number(x.order_index)===Number(target.order_index)));
+    const frames=[];
+    for(let i=0;i<count;i++)frames.push(pool[(idx+i*17)%pool.length]);
+    frames.push(target);
+    return frames;
+  }
+  async function preloadSpinFrames(frames){await Promise.all([...new Set(frames)].map(preloadPoseImage));}
+  async function runRandomPoseSpin(forcedOrder=null,remote=false,startAt=null,forcedTurn=null,forcedIds=null){
+    if(Array.isArray(forcedIds)&&forcedIds.length)applyRandomPoseLevels(forcedIds,{sync:false});
     const pool=getRandomPosePool();
     if(!pool.length)return null;
     if(randomPoseBusy && !remote)return null;
     if(remote) randomPoseBusy=false;
+    const target=(forcedOrder?pool.find(x=>Number(x.order_index)===Number(forcedOrder)):null)||pool[Math.floor(Math.random()*pool.length)];
+    const frames=buildSpinFrames(pool,target,18);
     const button=$('#randomPoseSpinBtn');randomPoseBusy=true;if(button)button.disabled=true;if(randomPoseResultBox)randomPoseResultBox.hidden=true;
     try{
-      await preloadPosePool(pool);
+      await preloadSpinFrames(frames);
       if(startAt)await waitUntil(startAt);
-      const target=(forcedOrder?pool.find(x=>Number(x.order_index)===Number(forcedOrder)):null)||pool[Math.floor(Math.random()*pool.length)];
       const turn=Number.isFinite(Number(forcedTurn))?Number(forcedTurn):(5+Math.floor(Math.random()*3));
       fortuneTurns+=turn;
       if(fortuneWheelRotor){fortuneWheelRotor.style.transition='transform 3.15s cubic-bezier(.08,.72,.08,1)';fortuneWheelRotor.style.transform=`rotate(${fortuneTurns*360 + (Number(target.order_index)*37)%340}deg)`;}
-      // Deterministic frame order: both devices see the same sequence.
-      const targetIndex=Math.max(0,pool.findIndex(x=>x.id===target.id));
-      const frames=pool.map((_,i)=>pool[(targetIndex+i*17)%pool.length]);let frameIndex=0;const start=performance.now(),duration=3050;
-      await new Promise(resolve=>{const tick=now=>{const t=Math.min(1,(now-start)/duration),delay=55+Math.floor(210*t*t);setRandomPose(frames[frameIndex++%frames.length]);if(t>=1){resolve();return}setTimeout(()=>requestAnimationFrame(tick),delay)};requestAnimationFrame(tick)});
-      setRandomPose(target);if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${target.order_index}`;if(randomPoseResult)randomPoseResult.textContent=target.poseTitle||(`Поза ${target.order_index}`);if(randomPoseDescription)randomPoseDescription.textContent=target.poseDescription||'';if(randomPoseResultBox)randomPoseResultBox.hidden=false;
+      let frameIndex=0;const startTime=performance.now(),duration=3050;
+      await new Promise(resolve=>{const tick=now=>{const t=Math.min(1,(now-startTime)/duration),delay=55+Math.floor(210*t*t);setRandomPose(frames[Math.min(frameIndex++,frames.length-1)]||target);if(t>=1){resolve();return}setTimeout(()=>requestAnimationFrame(tick),delay)};requestAnimationFrame(tick)});
+      applyRandomPoseResult(target);
       return target;
     }finally{randomPoseBusy=false;if(button)button.disabled=false}
   }
   async function beginSyncedRandomPoseSpin(){
     const pool=getRandomPosePool();if(randomPoseBusy||!pool.length)return;
-    // Offline/local mode does not need a handshake.
-    if(!window.SessionSync?.connected){await runRandomPoseSpin();return;}
-    setRandomSpinButtonBusy(true);
-    await preloadPosePool(pool);
     const ids=getSelectedRandomLevels();
     const target=pool[Math.floor(Math.random()*pool.length)];
-    const spinId='rp_'+Date.now()+'_'+Math.random().toString(36).slice(2,8);
     const turn=5+Math.floor(Math.random()*3);
-    randomSpinPending.set(spinId,{role:'initiator',target:target.order_index,turn,ids,started:false});
-    window.SessionSync.sendUI('game-action',{action:'random-pose-prepare',spinId,ids,order:target.order_index,turn});
-    // Safety fallback if the remote side disappears during the handshake.
-    setTimeout(()=>{
-      const p=randomSpinPending.get(spinId);if(!p||p.started)return;
-      p.started=true;const startAt=Date.now()+350;
-      // Fallback теж надсилає START партнеру: навіть якщо READY загубився,
-      // обидва пристрої все одно отримають однакову ціль і час запуску.
-      window.SessionSync?.replyUI?.('game-action',{action:'random-pose-start',spinId,startAt,order:p.target,turn:p.turn,ids:p.ids});
-      runRandomPoseSpin(p.target,false,startAt,p.turn).then(target=>{
-        if(target)window.SessionSync?.replyUI?.('game-action',{action:'random-pose-result',spinId,order:target.order_index,ids:p.ids});
-      }).finally(()=>{randomSpinPending.delete(spinId);setRandomSpinButtonBusy(false)});
-    },3500);
+    if(!window.SessionSync?.connected){await runRandomPoseSpin(target.order_index,false,null,turn,ids);return;}
+    // One atomic command: both devices receive identical levels, target and start time.
+    const startAt=Date.now()+900;
+    window.SessionSync?.replyUI?.('game-action',{action:'random-pose-spin',ids,order:target.order_index,turn,startAt});
+    await runRandomPoseSpin(target.order_index,false,startAt,turn,ids);
+    // Final result packet is a recovery path if animation was interrupted remotely.
+    window.SessionSync?.replyUI?.('game-action',{action:'random-pose-result',ids,order:target.order_index});
   }
   $('#randomPoseSpinBtn')?.addEventListener('click',()=>beginSyncedRandomPoseSpin());
   $('#randomPoseOpenBtn')?.addEventListener('click',()=>{
-    if(!randomPoseCurrent)return;
+    const item=lastRandomPoseResult||randomPoseCurrent;if(!item)return;
     const dlg=document.createElement('dialog'); dlg.className='dialog random-pose-zoom-dialog';
-    dlg.innerHTML=`<div class="random-pose-zoom"><button class="icon-btn random-zoom-close" aria-label="Закрити">×</button><img src="${randomPoseCurrent.image}" alt="${randomPoseCurrent.poseTitle || ('Поза ' + randomPoseCurrent.order_index)}"><small>Поза ${randomPoseCurrent.order_index}</small><strong>${randomPoseCurrent.poseTitle || ('Поза ' + randomPoseCurrent.order_index)}</strong><p>${randomPoseCurrent.poseDescription || ''}</p></div>`;
-    document.body.appendChild(dlg); dlg.querySelector('.random-zoom-close')?.addEventListener('click',()=>dlg.close()); dlg.addEventListener('close',()=>dlg.remove()); dlg.showModal();
+    dlg.innerHTML=`<div class="random-pose-zoom"><button class="icon-btn random-zoom-close" aria-label="Закрити">×</button><img src="${item.image}" alt="${item.poseTitle || ('Поза ' + item.order_index)}"><small>Поза ${item.order_index}</small><strong>${item.poseTitle || ('Поза ' + item.order_index)}</strong><p>${item.poseDescription || 'Опис цієї пози поки відсутній.'}</p></div>`;
+    document.body.appendChild(dlg);dlg.querySelector('.random-zoom-close')?.addEventListener('click',()=>dlg.close());dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});dlg.addEventListener('close',()=>dlg.remove());dlg.showModal();
   });
   renderRandomLevelFilter();
 
@@ -1043,7 +1052,7 @@ const pairStorage={
   $('#directDoneBtn')?.addEventListener('click',()=>{resolveResult(true);if(dbox)dbox.hidden=true});
   $('#directNoBtn')?.addEventListener('click',()=>{resolveResult(false);if(dbox)dbox.hidden=true});
 
-  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=(connected&&runtimeGame&&gameMeta[runtimeGame])?runtimeGame:storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
+  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
   document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose')renderRandomLevelFilter();});
   
@@ -1058,46 +1067,19 @@ const pairStorage={
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
       if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body},true);}
       if(a==='random-pose-levels'){
-        openGame('randomPose',false);applyRandomPoseLevels(m.payload.ids||[],{sync:false});
+        applyRandomPoseLevels(m.payload.ids||[],{sync:false});
+        if(document.body.dataset.activeGame==='randomPose')renderRandomLevelFilter();
       }
-      if(a==='random-pose-prepare'){
+      if(a==='random-pose-spin'){
         openGame('randomPose',false);
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
-        const spinId=m.payload.spinId;
-        const pool=getRandomPosePool();
-        randomSpinPending.set(spinId,{role:'receiver',target:m.payload.order,turn:m.payload.turn,ids:m.payload.ids||[],started:false});
-        setRandomSpinButtonBusy(true);
-        preloadPosePool(pool).then(()=>window.SessionSync?.replyUI?.('game-action',{action:'random-pose-ready',spinId}));
-      }
-      if(a==='random-pose-ready'){
-        const p=randomSpinPending.get(m.payload.spinId);
-        if(p&&p.role==='initiator'&&!p.started){
-          p.started=true;
-          const startAt=Date.now()+320;
-          window.SessionSync?.replyUI?.('game-action',{action:'random-pose-start',spinId:m.payload.spinId,startAt,order:p.target,turn:p.turn,ids:p.ids});
-          runRandomPoseSpin(p.target,false,startAt,p.turn).then(target=>{
-            if(target) window.SessionSync?.replyUI?.('game-action',{action:'random-pose-result',spinId:m.payload.spinId,order:target.order_index,ids:p.ids});
-          }).finally(()=>{randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false)});
-        }
-      }
-      if(a==='random-pose-start'){
-        openGame('randomPose',false);
-        applyRandomPoseLevels(m.payload.ids||[],{sync:false});
-        const p=randomSpinPending.get(m.payload.spinId)||{};p.started=true;randomSpinPending.set(m.payload.spinId,p);
-        runRandomPoseSpin(m.payload.order,true,m.payload.startAt,m.payload.turn).finally(()=>{randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false)});
+        runRandomPoseSpin(m.payload.order,true,m.payload.startAt,m.payload.turn,m.payload.ids||[]);
       }
       if(a==='random-pose-result'){
-        openGame('randomPose',false);
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
         const item=RANDOM_POSITIONS.find(x=>Number(x.order_index)===Number(m.payload.order));
-        if(item){
-          setRandomPose(item);
-          if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${item.order_index}`;
-          if(randomPoseResult)randomPoseResult.textContent=item.poseTitle||(`Поза ${item.order_index}`);
-          if(randomPoseDescription)randomPoseDescription.textContent=item.poseDescription||'';
-          if(randomPoseResultBox)randomPoseResultBox.hidden=false;
-        }
-        randomSpinPending.delete(m.payload.spinId);setRandomSpinButtonBusy(false);
+        if(item)applyRandomPoseResult(item);
+        setRandomSpinButtonBusy(false);
       }
     }
   });
