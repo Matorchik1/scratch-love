@@ -40,11 +40,26 @@
       <div class="pair-session-card">
         <h2>Грати разом на двох пристроях</h2>
         <p>Створи P2P-сесію або введи код партнера. Прогрес активної пари синхронізується між обома пристроями.</p>
+        <div class="session-role-grid">
+          <label>При створенні я граю за
+            <select id="createSessionRole">
+              <option value="0">Гравець 1</option>
+              <option value="1">Гравець 2</option>
+            </select>
+          </label>
+          <label>При підключенні я граю за
+            <select id="joinSessionRole">
+              <option value="1">Гравець 2</option>
+              <option value="0">Гравець 1</option>
+            </select>
+          </label>
+        </div>
         <div class="session-actions">
           <button class="btn primary" id="createSessionBtn" type="button">Створити сесію</button>
           <div class="session-join-row"><input id="joinSessionCode" maxlength="32" placeholder="Код сесії"><button class="btn secondary" id="joinSessionBtn" type="button">Приєднатися</button></div>
         </div>
         <div id="sessionStatus" class="session-status">Не підключено</div>
+        <div id="sessionRoleStatus" class="session-role-status" hidden></div>
         <div id="sessionCodeBox" class="session-code-box" hidden><span>Код сесії</span><strong id="sessionCode">—</strong><button class="text-btn" id="copySessionCodeBtn" type="button">Копіювати</button></div>
         <button class="text-btn danger" id="leaveSessionBtn" type="button" hidden>Вийти із сесії</button>
       </div>

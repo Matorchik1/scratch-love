@@ -554,13 +554,15 @@ const pairStorage={
   }));
   $('#resetScoreBtn')?.addEventListener('click',()=>{setScore([0,0]);setTurn(0);syncPlayers()});
 
-  function showTab(which){
+  function showTab(which, syncSession=true){
     calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(progressSection)progressSection.hidden=which!=='progress';
     calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); progressTabBtn?.classList.toggle('active',which==='progress');
     pairStorage.setItem('sa_main_tab_v1',which);
-    if(which==='games') showGamesMenu();
+    document.body.dataset.mainTab=which;
+    if(which==='games') showGamesMenu(syncSession);
     if(which==='places') renderPlaces();
     if(which==='progress') renderProgressPage();
+    if(syncSession) window.SessionSync?.sendUI?.('tab',{which});
   }
   calendarTabBtn?.addEventListener('click',()=>showTab('calendar'));
   placesTabBtn?.addEventListener('click',()=>showTab('places'));
@@ -586,13 +588,15 @@ const pairStorage={
     const list=Object.values(deferred).sort((a,b)=>new Date(b.date)-new Date(a.date)); if(pageDeferredCount)pageDeferredCount.textContent=list.length; if(pageDeferredList){pageDeferredList.innerHTML='';list.forEach(info=>{const item=positions.find(x=>Number(x.id)===Number(info.id));if(!item)return;const card=document.createElement('div');card.className='deferred-progress-card'+(info.wishDone?' wish-done':'');card.innerHTML=`<img src="${item.image}" alt="Поза ${item.order_index}"><div><strong>Поза ${item.order_index} · ${item.poseTitle||''}</strong><span>${info.wishDone?'Бажання виконано ✓':`${info.debtorName} має виконати бажання ${info.partnerName}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;const actions=document.createElement('div');actions.className='deferred-card-actions';if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>{const all=pageJSON(PAGE_DEFERRED_KEY,{});if(all[info.id]){all[info.id].wishDone=true;all[info.id].wishDoneDate=new Date().toISOString();pairStorage.setItem(PAGE_DEFERRED_KEY,JSON.stringify(all))}renderProgressPage();document.dispatchEvent(new CustomEvent('progress:changed'))});actions.appendChild(wish)}card.appendChild(actions);pageDeferredList.appendChild(card)});if(!list.length)pageDeferredList.innerHTML='<p class="empty-state">Відкладених поз немає.</p>'}
   }
   document.addEventListener('progress:changed',()=>{if(progressSection&&!progressSection.hidden)renderProgressPage()});
-  function showGamesMenu(){
+  function showGamesMenu(syncSession=true){
     gamesMenu.hidden=false; gameDetail.hidden=true;
     Object.values(gameViews).forEach(v=>v && (v.hidden=true));
     if(playersPanel) playersPanel.hidden=true;
     if(rouletteCustomPanel) rouletteCustomPanel.hidden=true;
+    delete document.body.dataset.activeGame;
+    if(syncSession) window.SessionSync?.sendUI?.('game-menu',{});
   }
-  function openGame(key){
+  function openGame(key, syncSession=true){
     const meta=gameMeta[key]; if(!meta) return;
     gamesMenu.hidden=true; gameDetail.hidden=false;
     if(activeGameTitle) activeGameTitle.textContent=meta.title;
@@ -604,6 +608,8 @@ const pairStorage={
     if(key==='passion'){passionActionSlot.setPool(actionPool());passionActionSlot.reset();passionBodySlot.reset();}
     if(key==='direct') directBodySlot.reset();
     if(key==='randomPose') resetRandomPosePreview();
+    document.body.dataset.activeGame=key;
+    if(syncSession) window.SessionSync?.sendUI?.('game',{key});
   }
   $$('.game-launch-card').forEach(btn=>btn.addEventListener('click',()=>openGame(btn.dataset.game)));
   backToGames?.addEventListener('click',showGamesMenu);
@@ -965,8 +971,14 @@ const pairStorage={
   $('#directDoneBtn')?.addEventListener('click',()=>{resolveResult(true);if(dbox)dbox.hidden=true});
   $('#directNoBtn')?.addEventListener('click',()=>{resolveResult(false);if(dbox)dbox.hidden=true});
 
-  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const t=pairStorage.getItem('sa_main_tab_v1'); showTab(['calendar','places','games','progress'].includes(t)?t:'calendar'); }
+  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const t=pairStorage.getItem('sa_main_tab_v1'); showTab(['calendar','places','games','progress'].includes(t)?t:'calendar',false); }
   document.addEventListener('pair:changed', refreshPairUI);
+  document.addEventListener('session:remote-ui',e=>{
+    const m=e.detail||{};
+    if(m.kind==='tab'&&m.payload?.which) showTab(m.payload.which,false);
+    if(m.kind==='game'&&m.payload?.key) openGame(m.payload.key,false);
+    if(m.kind==='game-menu') showGamesMenu(false);
+  });
   if(PairDB.active) refreshPairUI();
 })();
 
@@ -1065,16 +1077,89 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   document.addEventListener('pair:changed',()=>{renderSecret();renderBattle()});renderSecret();
 })();
 
-// --- P2P session sync v21 ---
+// --- P2P session sync v22: roles + shared UI ---
 (() => {
-  const $=s=>document.querySelector(s); let peer=null,conn=null,isApplying=false,lastSent='';
+  const $=s=>document.querySelector(s);
+  let peer=null,conn=null,isApplying=false,lastSent='',localRole=0,remoteRole=null,isHost=false,uiApply=false,uiTimer=null;
   const status=(t,ok=false)=>{const e=$('#sessionStatus');if(e){e.textContent=t;e.classList.toggle('connected',ok)}};
+  const roleStatus=$('#sessionRoleStatus');
   function code(){return 'love-'+Math.random().toString(36).slice(2,8)}
-  function wire(c){conn=c;$('#leaveSessionBtn').hidden=false;c.on('open',()=>{status('Підключено · синхронізація активна',true);if(PairDB.active)sendPair(PairDB.active)});c.on('data',async msg=>{if(msg?.type==='pair'&&msg.pair){isApplying=true;try{await PairDB.applyRemote(msg.pair);const g=document.querySelector('#pairGate'),sh=document.querySelector('#appShell'),lab=document.querySelector('#activePairLabel');if(g)g.hidden=true;if(sh)sh.hidden=false;if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');status('Синхронізовано',true)}finally{setTimeout(()=>isApplying=false,150)}}});c.on('close',()=>{status('Сесію завершено');conn=null;$('#leaveSessionBtn').hidden=true});c.on('error',e=>status('Помилка з’єднання: '+e.type))}
-  function sendPair(pair){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(snap===lastSent)return;lastSent=snap;conn.send({type:'pair',pair:JSON.parse(snap)})}
-  $('#createSessionBtn')?.addEventListener('click',()=>{if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}peer?.destroy();const id=code();peer=new Peer(id);status('Створюємо сесію…');peer.on('open',pid=>{$('#sessionCode').textContent=pid;$('#sessionCodeBox').hidden=false;status('Очікуємо підключення партнера…')});peer.on('connection',wire);peer.on('error',e=>status('Помилка: '+e.type))});
-  $('#joinSessionBtn')?.addEventListener('click',()=>{const id=$('#joinSessionCode')?.value.trim();if(!id)return;if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}peer?.destroy();peer=new Peer();status('Підключення…');peer.on('open',()=>wire(peer.connect(id,{reliable:true})));peer.on('error',e=>status('Помилка: '+e.type))});
+  function roleLabel(role){const p=PairDB.active?.players?.[role];return p?.name?`${p.name} (Гравець ${role+1})`:`Гравець ${role+1}`}
+  function updateRoleStatus(conflict=false){
+    if(!roleStatus)return;
+    if(!conn?.open){roleStatus.hidden=true;roleStatus.classList.remove('conflict');return}
+    roleStatus.hidden=false;
+    roleStatus.classList.toggle('conflict',conflict);
+    roleStatus.textContent=conflict?`Конфлікт ролей: обидва обрали ${roleLabel(localRole)}. Один із вас має перепідключитися з іншою роллю.`:`Ви граєте за: ${roleLabel(localRole)}${remoteRole===null?'':` · партнер: ${roleLabel(remoteRole)}`}`;
+  }
+  function send(msg){if(conn?.open)try{conn.send(msg)}catch(e){console.warn('session send',e)}}
+  function sendPair(pair){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap)})}
+  function sendUI(kind,payload={}){if(!conn?.open||uiApply)return;send({type:'ui',kind,payload})}
+
+  const mirrorIds=['passionResultBox','passionTurnLabel','passionResult','directResultBox','directTurnLabel','directResult','randomPoseResultBox','randomPoseResultIndex','randomPoseResult','randomPoseDescription','randomPoseNumber','randomPoseCaption','scenarioResult','fiveTimer','fiveMode','fiveRating','fiveRatingHistory','secretWishResult','secretWishP1Count','secretWishP2Count','blindResult','battleCounts','battleWinners','questSteps','fortuneLevelSummary'];
+  const slotSelectors=['#passionActionSlot .slot-track','#passionBodySlot .slot-track','#directBodySlot .slot-track','#scenarioMainReel .slot-track','#scenarioSecondReel .slot-track'];
+  function captureUI(){
+    const fields={};
+    mirrorIds.forEach(id=>{const el=document.getElementById(id);if(!el)return;fields[id]={hidden:!!el.hidden,html:el.innerHTML,text:el.textContent}});
+    const preview=$('#randomPosePreview'); if(preview)fields.randomPosePreview={src:preview.getAttribute('src'),alt:preview.getAttribute('alt')};
+    const rotor=$('#fortuneWheelRotor');if(rotor)fields.fortuneWheelRotor={transform:rotor.style.transform,transition:rotor.style.transition};
+    const activeDirect=$('#directActionChoice .choice-btn.active');
+    const activeScenario=$('#scenarioSecondType [data-mode].active');
+    const slots=slotSelectors.map(sel=>document.querySelector(sel)?.innerHTML||'');
+    const pd=$('#positionDialog');
+    const position=pd?{open:pd.open,category:$('#positionCategoryTitle')?.textContent||'',title:$('#positionDayTitle')?.textContent||'',src:$('#calendarPositionImage')?.getAttribute('src')||'',instruction:$('#positionInstruction')?.textContent||'',metaHidden:$('#positionMeta')?.hidden??true,name:$('#positionPoseName')?.textContent||'',description:$('#positionPoseDescription')?.textContent||''}:null;
+    return {fields,slots,directAction:activeDirect?.dataset.action||null,scenarioMode:activeScenario?.dataset.mode||null,position};
+  }
+  function applyUI(snap){
+    if(!snap)return;uiApply=true;
+    try{
+      Object.entries(snap.fields||{}).forEach(([id,v])=>{const el=document.getElementById(id);if(!el)return;if('hidden'in v)el.hidden=!!v.hidden;if(v.src&&el.tagName==='IMG'){el.src=v.src;if(v.alt)el.alt=v.alt}else if(typeof v.html==='string')el.innerHTML=v.html;if(v.transform&&id==='fortuneWheelRotor'){el.style.transform=v.transform;el.style.transition=v.transition||''}});
+      if(snap.fields?.fortuneWheelRotor){const r=$('#fortuneWheelRotor');if(r){r.style.transform=snap.fields.fortuneWheelRotor.transform||'';r.style.transition=snap.fields.fortuneWheelRotor.transition||''}}
+      (snap.slots||[]).forEach((html,i)=>{const track=document.querySelector(slotSelectors[i]);if(track&&html)track.innerHTML=html});
+      if(snap.directAction){document.querySelectorAll('#directActionChoice .choice-btn').forEach(b=>b.classList.toggle('active',b.dataset.action===snap.directAction))}
+      if(snap.scenarioMode){document.querySelectorAll('#scenarioSecondType [data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===snap.scenarioMode))}
+      if(snap.position){const p=snap.position,dlg=$('#positionDialog');if(dlg){if($('#positionCategoryTitle'))$('#positionCategoryTitle').textContent=p.category;if($('#positionDayTitle'))$('#positionDayTitle').textContent=p.title;if($('#calendarPositionImage')&&p.src)$('#calendarPositionImage').src=p.src;if($('#positionInstruction'))$('#positionInstruction').textContent=p.instruction;if($('#positionMeta'))$('#positionMeta').hidden=p.metaHidden;if($('#positionPoseName'))$('#positionPoseName').textContent=p.name;if($('#positionPoseDescription'))$('#positionPoseDescription').textContent=p.description;if(p.open&&!dlg.open)try{dlg.showModal()}catch{};if(!p.open&&dlg.open)dlg.close()}}
+      const flash=$('#gameDetail:not([hidden]), #calendarSection:not([hidden]), #placesSection:not([hidden]), #progressSection:not([hidden])');if(flash){flash.classList.remove('session-remote-flash');void flash.offsetWidth;flash.classList.add('session-remote-flash')}
+    }finally{setTimeout(()=>uiApply=false,80)}
+  }
+  function scheduleUISnapshot(delay=120){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{if(conn?.open&&!uiApply)send({type:'ui-snapshot',snapshot:captureUI()})},delay)}
+  window.SessionSync={sendUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open}};
+
+  function wire(c,hostSide){
+    conn=c;isHost=hostSide;$('#leaveSessionBtn').hidden=false;
+    c.on('open',()=>{
+      status('Підключено · синхронізація активна',true);updateRoleStatus(false);
+      send({type:'hello',role:localRole,players:PairDB.active?.players||null});
+      if(isHost&&PairDB.active)sendPair(PairDB.active);
+      sendUI('tab',{which:document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1')||'calendar'});
+      if(document.body.dataset.activeGame)sendUI('game',{key:document.body.dataset.activeGame});
+      scheduleUISnapshot(250);
+    });
+    c.on('data',async msg=>{
+      if(msg?.type==='hello'){
+        remoteRole=Number(msg.role);const conflict=remoteRole===localRole;updateRoleStatus(conflict);status(conflict?'Підключено, але є конфлікт ролей':'Підключено · синхронізація активна',!conflict);return;
+      }
+      if(msg?.type==='pair'&&msg.pair){isApplying=true;try{lastSent=JSON.stringify(msg.pair);await PairDB.applyRemote(msg.pair);const g=$('#pairGate'),sh=$('#appShell'),lab=$('#activePairLabel');if(g)g.hidden=true;if(sh)sh.hidden=false;if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');updateRoleStatus(remoteRole===localRole);status(remoteRole===localRole?'Синхронізовано · конфлікт ролей':'Синхронізовано',remoteRole!==localRole)}finally{setTimeout(()=>isApplying=false,180)}return}
+      if(msg?.type==='ui'){uiApply=true;try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}finally{setTimeout(()=>uiApply=false,80)}return}
+      if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot);return}
+    });
+    c.on('close',()=>{status('Сесію завершено');conn=null;remoteRole=null;$('#leaveSessionBtn').hidden=true;updateRoleStatus(false)});
+    c.on('error',e=>status('Помилка з’єднання: '+e.type));
+  }
+  $('#createSessionBtn')?.addEventListener('click',()=>{
+    if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}
+    localRole=Number($('#createSessionRole')?.value||0);sessionStorage.setItem('sa_session_role',String(localRole));peer?.destroy();const id=code();peer=new Peer(id);status(`Створюємо сесію як ${roleLabel(localRole)}…`);peer.on('open',pid=>{$('#sessionCode').textContent=pid;$('#sessionCodeBox').hidden=false;status(`Очікуємо партнера · ви ${roleLabel(localRole)}`)});peer.on('connection',c=>wire(c,true));peer.on('error',e=>status('Помилка: '+e.type));
+  });
+  $('#joinSessionBtn')?.addEventListener('click',()=>{
+    const id=$('#joinSessionCode')?.value.trim();if(!id)return;if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}
+    localRole=Number($('#joinSessionRole')?.value||1);sessionStorage.setItem('sa_session_role',String(localRole));peer?.destroy();peer=new Peer();status(`Підключення як ${roleLabel(localRole)}…`);peer.on('open',()=>wire(peer.connect(id,{reliable:true}),false));peer.on('error',e=>status('Помилка: '+e.type));
+  });
   $('#copySessionCodeBtn')?.addEventListener('click',async()=>{const t=$('#sessionCode')?.textContent;if(t&&t!=='—'){try{await navigator.clipboard.writeText(t);status('Код скопійовано')}catch{status('Скопіюйте код вручну: '+t)}}});
-  $('#leaveSessionBtn')?.addEventListener('click',()=>{try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено')});
-  document.addEventListener('pair:state-saved',e=>sendPair(e.detail));document.addEventListener('pair:profile',()=>sendPair(PairDB.active));
+  $('#leaveSessionBtn')?.addEventListener('click',()=>{try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;remoteRole=null;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено');updateRoleStatus(false)});
+  const savedRole=Number(sessionStorage.getItem('sa_session_role'));if(savedRole===0||savedRole===1){localRole=savedRole;if($('#createSessionRole'))$('#createSessionRole').value=String(savedRole);if($('#joinSessionRole'))$('#joinSessionRole').value=String(savedRole)}
+  document.addEventListener('pair:state-saved',e=>{sendPair(e.detail);scheduleUISnapshot(120)});document.addEventListener('pair:profile',()=>sendPair(PairDB.active));
+  document.addEventListener('click',e=>{if(!conn?.open||uiApply)return;const interactive=e.target.closest('button,[data-game],.calendar-day,.place-item,input[type=checkbox],select');if(!interactive)return;scheduleUISnapshot(180);scheduleUISnapshot(3600)});
+  document.addEventListener('change',()=>scheduleUISnapshot(120));
+  setInterval(()=>{if(conn?.open&&!uiApply)scheduleUISnapshot(20)},1000);
 })();
+
