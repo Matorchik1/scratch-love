@@ -1,4 +1,4 @@
-// ===== v34: stable pair profiles + deterministic realtime game sync =====
+// ===== v33: pair profiles + deterministic realtime game sync =====
 const PairDB = (() => {
   const DB='scratch_love_db_v1', STORE='pairs', META='meta';
   let db=null, active=null, saveTimer=null;
@@ -588,15 +588,8 @@ const pairStorage={
     const p1Title=$('#secretWishP1Title'),p2Title=$('#secretWishP2Title');
     if(p1Title)p1Title.textContent=participantLabel(0,true); if(p2Title)p2Title.textContent=participantLabel(1,true);
     const b1=$('#battleP1Input'),b2=$('#battleP2Input');
-    if(b1){b1.placeholder=self===0?'Ваше бажання':'Додає партнер';b1.disabled=self!==0;}
-    if(b2){b2.placeholder=self===1?'Ваше бажання':'Додає партнер';b2.disabled=self!==1;}
-    const bf1=$('#battleP1Form'),bf2=$('#battleP2Form');
-    if(bf1)bf1.classList.toggle('private-locked',self!==0);if(bf2)bf2.classList.toggle('private-locked',self!==1);
-    const sw1=$('#secretWishP1Input'),sw2=$('#secretWishP2Input');
-    if(sw1){sw1.placeholder=self===0?'Ваше таємне бажання':'Додає партнер';sw1.disabled=self!==0;}
-    if(sw2){sw2.placeholder=self===1?'Ваше таємне бажання':'Додає партнер';sw2.disabled=self!==1;}
-    const sf1=$('#secretWishP1Form'),sf2=$('#secretWishP2Form');
-    if(sf1)sf1.classList.toggle('private-locked',self!==0);if(sf2)sf2.classList.toggle('private-locked',self!==1);
+    if(b1)b1.placeholder=(self===0?'Ваше бажання':`Бажання — ${names[0]}`);
+    if(b2)b2.placeholder=(self===1?'Ваше бажання':`Бажання — ${names[1]}`);
   }
   document.addEventListener('session:role-changed',()=>syncPlayers());
 
@@ -789,7 +782,7 @@ const pairStorage={
       this.track.style.transition='none'; this.track.style.transform='translateY(0px)';
       if(animate){
         requestAnimationFrame(()=>requestAnimationFrame(()=>{
-          this.track.style.transition='transform 2.85s cubic-bezier(.08,.65,.12,1)';
+          this.track.style.transition='transform 1.65s cubic-bezier(.12,.7,.13,1)';
           this.track.style.transform=`translateY(${-(targetIndex-1)*this.itemHeight}px)`;
         }));
       }
@@ -805,12 +798,12 @@ const pairStorage={
       let target=value===null?Math.floor(Math.random()*this.pool.length):this.pool.indexOf(value);
       if(target<0) target=Math.floor(Math.random()*this.pool.length);
       const sequence=[];
-      for(let i=0;i<38;i++) sequence.push(this.pool[(this.current+i)%this.pool.length]);
+      for(let i=0;i<24;i++) sequence.push(this.pool[(this.current+i)%this.pool.length]);
       sequence.push(this.pool[(target-1+this.pool.length)%this.pool.length],this.pool[target],this.pool[(target+1)%this.pool.length]);
       const targetIndex=sequence.length-2; this.renderSequence(sequence,targetIndex,true);
       return new Promise(resolve=>setTimeout(()=>{
         this.current=target; this.busy=false; this.root?.classList.remove('is-spinning'); this.reset(); resolve(this.pool[target]);
-      },2920));
+      },1700));
     }
     spin(){ return this.spinTo(null); }
   }
@@ -879,7 +872,7 @@ const pairStorage={
     {id:'acro',name:'Акробатичний',from:295,to:312}
   ];
   const RANDOM_LEVELS_KEY='sa_random_pose_levels_v1';
-  const RANDOM_LAST_KEY='sa_random_pose_last_v2';
+  const RANDOM_LAST_KEY='sa_random_pose_last_v1';
   const fortuneWheel=$('#fortuneWheel'), fortuneWheelRotor=$('#fortuneWheelRotor'), randomPosePreview=$('#randomPosePreview'), randomPoseNumber=$('#randomPoseNumber'), randomPoseCaption=$('#randomPoseCaption'), randomPoseResultBox=$('#randomPoseResultBox'), randomPoseResultIndex=$('#randomPoseResultIndex'), randomPoseResult=$('#randomPoseResult'), randomPoseDescription=$('#randomPoseDescription');
   const fortuneLevelOptions=$('#fortuneLevelOptions'), fortuneLevelSummary=$('#fortuneLevelSummary');
   let randomPoseCurrent=RANDOM_POSITIONS[0]||null, randomPoseBusy=false, fortuneTurns=0;
@@ -890,14 +883,14 @@ const pairStorage={
     }catch{return RANDOM_LEVELS.map(x=>x.id)}
   }
   function saveSelectedRandomLevels(ids){pairStorage.setItem(RANDOM_LEVELS_KEY,JSON.stringify(ids));}
-  function applyRandomPoseLevels(ids,{sync=false,clearResult=false}={}){
+  function applyRandomPoseLevels(ids,{sync=false}={}){
     const clean=(Array.isArray(ids)?ids:[]).filter(id=>RANDOM_LEVELS.some(x=>x.id===id));
     const finalIds=clean.length?clean:RANDOM_LEVELS.map(x=>x.id);
     saveSelectedRandomLevels(finalIds);
     renderRandomLevelFilter();
     const pool=getRandomPosePool();
     if(pool.length&&!pool.includes(randomPoseCurrent))setRandomPose(pool[0]);
-    if(clearResult&&randomPoseResultBox)randomPoseResultBox.hidden=true;
+    if(randomPoseResultBox)randomPoseResultBox.hidden=true;
     if(sync)window.SessionSync?.sendUI?.('game-action',{action:'random-pose-levels',ids:finalIds});
   }
   function getRandomPosePool(){
@@ -911,7 +904,7 @@ const pairStorage={
     fortuneLevelOptions.querySelectorAll('input').forEach(input=>input.addEventListener('change',()=>{
       let ids=[...fortuneLevelOptions.querySelectorAll('input:checked')].map(x=>x.value);
       if(!ids.length){ input.checked=true; ids=[input.value]; }
-      applyRandomPoseLevels(ids,{sync:true,clearResult:true});
+      applyRandomPoseLevels(ids,{sync:true});
     }));
     updateRandomLevelSummary();
   }
@@ -920,7 +913,7 @@ const pairStorage={
     const ids=getSelectedRandomLevels(); const names=RANDOM_LEVELS.filter(x=>ids.includes(x.id)).map(x=>x.name); const count=getRandomPosePool().length;
     fortuneLevelSummary.textContent=`Обрано: ${names.join(', ')} · ${count} поз`;
   }
-  $('#fortuneSelectAllLevelsBtn')?.addEventListener('click',()=>applyRandomPoseLevels(RANDOM_LEVELS.map(x=>x.id),{sync:true,clearResult:true}));
+  $('#fortuneSelectAllLevelsBtn')?.addEventListener('click',()=>applyRandomPoseLevels(RANDOM_LEVELS.map(x=>x.id),{sync:true}));
   const poseImageCache=new Map();
   function preloadPoseImage(item){
     if(!item?.image)return Promise.resolve();
@@ -949,21 +942,19 @@ const pairStorage={
   }
   function resetRandomPosePreview(){
     const pool=getRandomPosePool();
-    let savedLast=null;try{savedLast=JSON.parse(pairStorage.getItem(RANDOM_LAST_KEY)||'null')}catch{}
-    if(!savedLast){const legacy=Number(pairStorage.getItem('sa_random_pose_last_v1')||0);if(legacy)savedLast={order:legacy};}
-    const lastOrder=Number(savedLast?.order||savedLast||0);
+    const lastOrder=Number(pairStorage.getItem(RANDOM_LAST_KEY)||0);
     const last=RANDOM_POSITIONS.find(x=>Number(x.order_index)===lastOrder);
     if(last){applyRandomPoseResult(last);return;}
     if(randomPoseResultBox)randomPoseResultBox.hidden=true;
     setRandomPose(pool.includes(randomPoseCurrent)?randomPoseCurrent:(pool[0]||RANDOM_POSITIONS[0]));
   }
   let lastRandomPoseResult=randomPoseCurrent;
-  const waitUntil=async (ts,delayMs=0)=>{const ms=Number(delayMs)>0?Number(delayMs):(Number(ts||0)-Date.now());if(ms>2)await new Promise(r=>setTimeout(r,ms));};
+  const waitUntil=async ts=>{const ms=Number(ts||0)-Date.now();if(ms>2)await new Promise(r=>setTimeout(r,ms));};
   function setRandomSpinButtonBusy(busy){const button=$('#randomPoseSpinBtn');if(button)button.disabled=!!busy;}
   function applyRandomPoseResult(item){
     if(!item)return;
     lastRandomPoseResult=item;
-    pairStorage.setItem(RANDOM_LAST_KEY,JSON.stringify({order:Number(item.order_index),title:item.poseTitle||'',description:item.poseDescription||'',image:item.image||''}));
+    pairStorage.setItem(RANDOM_LAST_KEY,String(item.order_index));
     setRandomPose(item);
     if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${item.order_index}`;
     if(randomPoseResult)randomPoseResult.textContent=item.poseTitle||(`Поза ${item.order_index}`);
@@ -979,7 +970,7 @@ const pairStorage={
     return frames;
   }
   async function preloadSpinFrames(frames){await Promise.all([...new Set(frames)].map(preloadPoseImage));}
-  async function runRandomPoseSpin(forcedOrder=null,remote=false,startAt=null,forcedTurn=null,forcedIds=null,delayMs=0){
+  async function runRandomPoseSpin(forcedOrder=null,remote=false,startAt=null,forcedTurn=null,forcedIds=null){
     if(Array.isArray(forcedIds)&&forcedIds.length)applyRandomPoseLevels(forcedIds,{sync:false});
     const pool=getRandomPosePool();
     if(!pool.length)return null;
@@ -990,7 +981,7 @@ const pairStorage={
     const button=$('#randomPoseSpinBtn');randomPoseBusy=true;if(button)button.disabled=true;if(randomPoseResultBox)randomPoseResultBox.hidden=true;
     try{
       preloadSpinFrames(frames).catch(()=>{});
-      if(startAt||delayMs)await waitUntil(startAt,delayMs);
+      if(startAt)await waitUntil(startAt);
       const turn=Number.isFinite(Number(forcedTurn))?Number(forcedTurn):(5+Math.floor(Math.random()*3));
       fortuneTurns+=turn;
       if(fortuneWheelRotor){fortuneWheelRotor.style.transition='transform 3.15s cubic-bezier(.08,.72,.08,1)';fortuneWheelRotor.style.transform=`rotate(${fortuneTurns*360 + (Number(target.order_index)*37)%340}deg)`;}
@@ -1007,16 +998,15 @@ const pairStorage={
     const turn=5+Math.floor(Math.random()*3);
     if(!window.SessionSync?.connected){await runRandomPoseSpin(target.order_index,false,null,turn,ids);return;}
     // One atomic command: both devices receive identical levels, target and start time.
-    const delayMs=650;
-    window.SessionSync?.replyUI?.('game-action',{action:'random-pose-spin',ids,order:target.order_index,turn,delayMs});
-    await runRandomPoseSpin(target.order_index,false,null,turn,ids,delayMs);
+    const startAt=Date.now()+900;
+    window.SessionSync?.replyUI?.('game-action',{action:'random-pose-spin',ids,order:target.order_index,turn,startAt});
+    await runRandomPoseSpin(target.order_index,false,startAt,turn,ids);
     // Final result packet is a recovery path if animation was interrupted remotely.
     window.SessionSync?.replyUI?.('game-action',{action:'random-pose-result',ids,order:target.order_index});
   }
   $('#randomPoseSpinBtn')?.addEventListener('click',()=>beginSyncedRandomPoseSpin());
   $('#randomPoseOpenBtn')?.addEventListener('click',()=>{
-    let saved=null;try{saved=JSON.parse(pairStorage.getItem(RANDOM_LAST_KEY)||'null')}catch{}
-    const item=RANDOM_POSITIONS.find(x=>Number(x.order_index)===Number(saved?.order))||lastRandomPoseResult||randomPoseCurrent;if(!item)return;
+    const item=lastRandomPoseResult||randomPoseCurrent;if(!item)return;
     const dlg=document.createElement('dialog'); dlg.className='dialog random-pose-zoom-dialog';
     dlg.innerHTML=`<div class="random-pose-zoom"><button class="icon-btn random-zoom-close" aria-label="Закрити">×</button><img src="${item.image}" alt="${item.poseTitle || ('Поза ' + item.order_index)}"><small>Поза ${item.order_index}</small><strong>${item.poseTitle || ('Поза ' + item.order_index)}</strong><p>${item.poseDescription || 'Опис цієї пози поки відсутній.'}</p></div>`;
     document.body.appendChild(dlg);dlg.querySelector('.random-zoom-close')?.addEventListener('click',()=>dlg.close());dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});dlg.addEventListener('close',()=>dlg.remove());dlg.showModal();
@@ -1025,36 +1015,23 @@ const pairStorage={
 
   function showResult(gameKey,resultText,turnLabelEl,resultEl,box,forcedTurn=null){
     const turn=(forcedTurn===0||forcedTurn===1)?forcedTurn:getTurn(),target=(turn+1)%2;
-    pendingGame={id:'result_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),gameKey,turn,resultText,createdAt:Date.now()};
+    pendingGame={gameKey,turn,resultText};
     pairStorage.setItem(PENDING_GAME_KEY,JSON.stringify(pendingGame));
     if(turnLabelEl) turnLabelEl.textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;
     if(resultEl) resultEl.textContent=resultText;
-    if(box){box.hidden=false;box.dataset.pendingResultId=pendingGame.id;}
-    setResultButtonsEnabled(gameKey,true);
-  }
-  function setResultButtonsEnabled(gameKey,enabled){
-    const ids=gameKey==='passion'?['passionDoneBtn','passionNoBtn']:gameKey==='direct'?['directDoneBtn','directNoBtn']:[];
-    ids.forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!enabled});
-  }
-  function currentPendingFor(gameKey){
-    let pg=pendingGame;
-    if(!pg){try{pg=JSON.parse(pairStorage.getItem(PENDING_GAME_KEY)||'null')}catch{pg=null}}
-    if(pg&&gameKey&&pg.gameKey!==gameKey)return null;
-    return pg;
+    if(box) box.hidden=false;
   }
   function resolveResult(completed,syncSession=true,forced=null){
-    const pg=forced||currentPendingFor();
+    if(!pendingGame){try{pendingGame=JSON.parse(pairStorage.getItem(PENDING_GAME_KEY)||'null')}catch{pendingGame=null}}
+    const pg=forced||pendingGame;
     if(!pg)return;
     let score=getScore();
     if(forced?.score){score=[Number(forced.score[0])||0,Number(forced.score[1])||0]}
-    else if(completed){const ix=Number(pg.turn)===1?1:0;score[ix]=(Number(score[ix])||0)+1;}
+    else if(completed){score[pg.turn]=(score[pg.turn]||0)+1;}
     const nextTurn=forced?.nextTurn!=null?Number(forced.nextTurn)%2:(Number(pg.turn)+1)%2;
     setScore(score);setTurn(nextTurn);pendingGame=null;pairStorage.removeItem(PENDING_GAME_KEY);syncPlayers();
-    const box=pg.gameKey==='passion'?pbox:pg.gameKey==='direct'?dbox:null;if(box){box.hidden=true;delete box.dataset.pendingResultId;}
-    setResultButtonsEnabled(pg.gameKey,false);
-    // Persist immediately so a stale partner snapshot cannot undo score.
-    PairDB.save?.();
-    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-resolve',gameKey:pg.gameKey,completed:!!completed,turn:pg.turn,score,nextTurn,resultId:pg.id||null});
+    const box=pg.gameKey==='passion'?pbox:pg.gameKey==='direct'?dbox:null;if(box)box.hidden=true;
+    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-resolve',gameKey:pg.gameKey,completed:!!completed,turn:pg.turn,score,nextTurn});
   }
 
   const pbox=$('#passionResultBox');
@@ -1065,16 +1042,16 @@ const pairStorage={
       const action=forced?.action || actionPool()[Math.floor(Math.random()*actionPool().length)];
       const bp=bodyPoolForTarget(); const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
       const turn=(forced?.turn===0||forced?.turn===1)?forced.turn:getTurn();
-      const delayMs=Number(forced?.delayMs)|| (window.SessionSync?.connected?550:0);
-      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,delayMs});
-      if(delayMs)await waitUntil(null,delayMs);
+      const startAt=forced?.startAt || (window.SessionSync?.connected?Date.now()+500:null);
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,startAt});
+      if(startAt)await waitUntil(startAt);
       const [a,b]=await Promise.all([passionActionSlot.spinTo(action),passionBodySlot.spinTo(body)]);
       showResult('passion',`${a} — ${b}`,$('#passionTurnLabel'),$('#passionResult'),pbox,turn);
     }catch(err){console.error(err)}finally{rolling=false;if(button)button.disabled=false}
   }
   $('#passionRollBtn')?.addEventListener('click',()=>runPassionRoll());
-  $('#passionDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(true)});
-  $('#passionNoBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(false)});
+  $('#passionDoneBtn')?.addEventListener('click',()=>resolveResult(true));
+  $('#passionNoBtn')?.addEventListener('click',()=>resolveResult(false));
 
   $$('#directActionChoice .choice-btn').forEach(btn=>btn.addEventListener('click',()=>{
     $$('#directActionChoice .choice-btn').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); directAction=btn.dataset.action;
@@ -1088,20 +1065,20 @@ const pairStorage={
       document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));
       const bp=bodyPoolForTarget();const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
       const turn=(forced?.turn===0||forced?.turn===1)?forced.turn:getTurn();
-      const delayMs=Number(forced?.delayMs)|| (window.SessionSync?.connected?550:0);
-      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'direct-roll',directAction,body,turn,delayMs});
-      if(delayMs)await waitUntil(null,delayMs);
+      const startAt=forced?.startAt || (window.SessionSync?.connected?Date.now()+500:null);
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'direct-roll',directAction,body,turn,startAt});
+      if(startAt)await waitUntil(startAt);
       const b=await directBodySlot.spinTo(body);showResult('direct',`${directAction} — ${b}`,$('#directTurnLabel'),$('#directResult'),dbox,turn);
     }catch(err){console.error(err)}finally{rolling=false;if(button)button.disabled=false}
   }
   $('#directRollBtn')?.addEventListener('click',()=>runDirectRoll());
-  $('#directDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(true)});
-  $('#directNoBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(false)});
+  $('#directDoneBtn')?.addEventListener('click',()=>resolveResult(true));
+  $('#directNoBtn')?.addEventListener('click',()=>resolveResult(false));
 
   function refreshPendingResult(){try{pendingGame=JSON.parse(pairStorage.getItem(PENDING_GAME_KEY)||'null')}catch{pendingGame=null}if(!pendingGame)return;if(pendingGame.gameKey==='passion'&&pbox)showResult('passion',pendingGame.resultText||'—',$('#passionTurnLabel'),$('#passionResult'),pbox,pendingGame.turn);if(pendingGame.gameKey==='direct'&&dbox)showResult('direct',pendingGame.resultText||'—',$('#directTurnLabel'),$('#directResult'),dbox,pendingGame.turn)}
   function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); refreshPendingResult(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
-  document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}refreshPendingResult();});
+  document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose')renderRandomLevelFilter();});
   
   document.addEventListener('session:remote-ui',e=>{
     const m=e.detail||{};
@@ -1110,9 +1087,9 @@ const pairStorage={
     if(m.kind==='game-menu') showGamesMenu(false,true);
     if(m.kind==='game-action'){
       const a=m.payload?.action;
-      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,delayMs:m.payload.delayMs},true);}
+      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,startAt:m.payload.startAt},true);}
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
-      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,delayMs:m.payload.delayMs},true);}
+      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,startAt:m.payload.startAt},true);}
       if(a==='score-resolve'){resolveResult(!!m.payload.completed,false,{gameKey:m.payload.gameKey,turn:m.payload.turn,score:m.payload.score,nextTurn:m.payload.nextTurn});}
       if(a==='random-pose-levels'){
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
@@ -1121,7 +1098,7 @@ const pairStorage={
       if(a==='random-pose-spin'){
         openGame('randomPose',false);
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
-        runRandomPoseSpin(m.payload.order,true,null,m.payload.turn,m.payload.ids||[],m.payload.delayMs||550);
+        runRandomPoseSpin(m.payload.order,true,m.payload.startAt,m.payload.turn,m.payload.ids||[]);
       }
       if(a==='random-pose-result'){
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
@@ -1192,7 +1169,7 @@ const pairStorage={
 // v20 unified progress refresh
 document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new CustomEvent('progress:changed')); }catch(e){} });
 
-// --- Extra couple games v34: stable synchronized actions ---
+// --- Extra couple games v33: synchronized actions ---
 (() => {
   'use strict';
   const $=s=>document.querySelector(s); const parse=(k,f)=>{try{return JSON.parse(pairStorage.getItem(k)||JSON.stringify(f))}catch{return f}}; const save=(k,v)=>pairStorage.setItem(k,JSON.stringify(v));
@@ -1206,39 +1183,27 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   const bodies=['Рука','Сідниці','Спина','Живіт','Щоки','Груди','Пах','Вухо','Стопи','Палець','Коліна','Нога','Губи','Пупок','Шия','Соски','Промежина','Стегно','Пальці ніг'];
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const send=(action,payload={})=>window.SessionSync?.connected&&window.SessionSync.replyUI?.('game-action',{action,...payload});
-  const waitDelay=async ms=>{ms=Number(ms)||0;if(ms>1)await new Promise(r=>setTimeout(r,ms))};
+  const wait=async ts=>{const ms=Number(ts||0)-Date.now();if(ms>1)await new Promise(r=>setTimeout(r,ms))};
 
-  function addSecret(player,input){if(player!==extraGameViewRole())return;const val=$(input)?.value.trim();if(!val)return;const d=parse(SECRET,[[],[]]);d[player]||=[];d[player].push(val);save(SECRET,d);$(input).value='';renderSecret()}
+  function addSecret(player,input){const val=$(input)?.value.trim();if(!val)return;const d=parse(SECRET,[[],[]]);d[player]||=[];d[player].push(val);save(SECRET,d);$(input).value='';renderSecret()}
   function renderSecret(){const d=parse(SECRET,[[],[]]);if($('#secretWishP1Title'))$('#secretWishP1Title').textContent=extraParticipantLabel(0,true);if($('#secretWishP2Title'))$('#secretWishP2Title').textContent=extraParticipantLabel(1,true);if($('#secretWishP1Count'))$('#secretWishP1Count').textContent=`Збережено таємно: ${(d[0]||[]).length}`;if($('#secretWishP2Count'))$('#secretWishP2Count').textContent=`Збережено таємно: ${(d[1]||[]).length}`}
   $('#secretWishP1Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(0,'#secretWishP1Input')});$('#secretWishP2Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(1,'#secretWishP2Input')});
   function showSecret(r){const box=$('#secretWishResult');if(!box)return;box.hidden=false;box.innerHTML=`<small>Бажання від: ${extraParticipantLabel(r.p,true)}</small><strong>${esc(r.x)}</strong>`}
   $('#revealSecretWishBtn')?.addEventListener('click',()=>{const d=parse(SECRET,[[],[]]),pool=[...(d[0]||[]).map(x=>({p:0,x})),...(d[1]||[]).map(x=>({p:1,x}))],box=$('#secretWishResult');if(!pool.length){box.hidden=false;box.innerHTML='<strong>Спочатку додайте хоча б одне бажання.</strong>';return}const r=pool[Math.floor(Math.random()*pool.length)];showSecret(r);send('secret-wish-reveal',{result:r})});
 
   const scenarios=['Романтика','Швидко','Повільно','Без слів','Із зав’язаними очима','У новому місці','Тільки поцілунки'],durations=['2 хв','5 хв','10 хв','15 хв','20 хв'];let scenMode='duration';
-  function simpleReel(el,items){if(!el)return;const track=el.querySelector('.slot-track');let idx=Math.floor(Math.random()*items.length);function draw(){track.innerHTML=[-1,0,1].map(o=>`<div class="slot-item ${o===0?'active':''}">${esc(items[(idx+o+items.length)%items.length])}</div>`).join('')}draw();return{setItems(a){items=a;idx%=Math.max(a.length,1);draw()},spinTo(value=null){return new Promise(res=>{const target=value==null?Math.floor(Math.random()*items.length):Math.max(0,items.indexOf(value));let steps=28+Math.floor(Math.random()*8),i=0;const tick=()=>{idx=(idx+1)%items.length;draw();i++;if(i>=steps){idx=target;draw();res(items[idx]);return}setTimeout(tick,70+Math.floor(i*4.5))};setTimeout(tick,90)})}}}
+  function simpleReel(el,items){if(!el)return;const track=el.querySelector('.slot-track');let idx=Math.floor(Math.random()*items.length);function draw(){track.innerHTML=[-1,0,1].map(o=>`<div class="slot-item ${o===0?'active':''}">${esc(items[(idx+o+items.length)%items.length])}</div>`).join('')}draw();return{setItems(a){items=a;idx%=Math.max(a.length,1);draw()},spinTo(value=null){return new Promise(res=>{const target=value==null?Math.floor(Math.random()*items.length):Math.max(0,items.indexOf(value));let steps=18+Math.floor(Math.random()*10),i=0;const t=setInterval(()=>{idx=(idx+1)%items.length;draw();if(++i>=steps){clearInterval(t);idx=target;draw();res(items[idx])}},70+i*3)})}}}
   const scenReel=simpleReel($('#scenarioMainReel'),scenarios),secondReel=simpleReel($('#scenarioSecondReel'),durations);
   function setScenarioMode(mode,sync=true){scenMode=mode==='place'?'place':'duration';$('#scenarioSecondType')?.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x.dataset.mode===scenMode));const arr=scenMode==='duration'?durations:allPlaces();secondReel?.setItems(arr.length?arr:['Ваше місце']);if($('#scenarioSecondLabel'))$('#scenarioSecondLabel').textContent=scenMode==='duration'?'Тривалість':'Місце';if(sync)send('scenario-mode',{mode:scenMode})}
   $('#scenarioSecondType')?.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(b)setScenarioMode(b.dataset.mode,true)});
-  async function rollScenario(p={},remote=false){if(p.mode)setScenarioMode(p.mode,false);const pool=scenMode==='duration'?durations:(allPlaces().length?allPlaces():['Ваше місце']),a=p.a||scenarios[Math.floor(Math.random()*scenarios.length)],b=p.b||pool[Math.floor(Math.random()*pool.length)],delayMs=Number(p.delayMs)||(window.SessionSync?.connected?550:0);if(!remote)send('scenario-roll',{mode:scenMode,a,b,delayMs});if(delayMs)await waitDelay(delayMs);const vals=await Promise.all([scenReel.spinTo(a),secondReel.spinTo(b)]),box=$('#scenarioResult');box.hidden=false;box.innerHTML=`<small>Ваш сценарій</small><strong>${vals[0]} — ${vals[1]}</strong>`}
+  async function rollScenario(p={},remote=false){if(p.mode)setScenarioMode(p.mode,false);const pool=scenMode==='duration'?durations:(allPlaces().length?allPlaces():['Ваше місце']),a=p.a||scenarios[Math.floor(Math.random()*scenarios.length)],b=p.b||pool[Math.floor(Math.random()*pool.length)],startAt=p.startAt||(window.SessionSync?.connected?Date.now()+500:null);if(!remote)send('scenario-roll',{mode:scenMode,a,b,startAt});if(startAt)await wait(startAt);const vals=await Promise.all([scenReel.spinTo(a),secondReel.spinTo(b)]),box=$('#scenarioResult');box.hidden=false;box.innerHTML=`<small>Ваш сценарій</small><strong>${vals[0]} — ${vals[1]}</strong>`}
   $('#scenarioRollBtn')?.addEventListener('click',()=>rollScenario());
 
   const fiveModes=['Тільки дотики','Тільки поцілунки','Без рук','Один керує','Повільний темп','Без слів'];let fiveSec=300,fiveTimerId=null,fiveMode=fiveModes[0],fiveEndAt=null;
-  let fivePerfEnd=0;
-  function fiveDraw(){
-    if(fivePerfEnd&&fiveTimerId)fiveSec=Math.max(0,Math.ceil((fivePerfEnd-performance.now())/1000));
-    if($('#fiveTimer'))$('#fiveTimer').textContent=`${String(Math.floor(fiveSec/60)).padStart(2,'0')}:${String(fiveSec%60).padStart(2,'0')}`;
-    if($('#fiveMode'))$('#fiveMode').textContent=fiveMode;
-  }
+  function fiveDraw(){if(fiveEndAt&&fiveTimerId)fiveSec=Math.max(0,Math.ceil((fiveEndAt-Date.now())/1000));if($('#fiveTimer'))$('#fiveTimer').textContent=`${String(Math.floor(fiveSec/60)).padStart(2,'0')}:${String(fiveSec%60).padStart(2,'0')}`;if($('#fiveMode'))$('#fiveMode').textContent=fiveMode}
   function setFiveMode(mode,sync=true){fiveMode=mode||fiveModes[0];fiveDraw();if(sync)send('five-mode',{mode:fiveMode})}
-  function startFive(durationMs=null,sync=true){
-    clearInterval(fiveTimerId);
-    const ms=Number(durationMs)>0?Number(durationMs):Math.max(1000,fiveSec*1000);
-    fiveSec=Math.ceil(ms/1000);fivePerfEnd=performance.now()+ms;fiveEndAt=Date.now()+ms;
-    fiveDraw();
-    fiveTimerId=setInterval(()=>{fiveDraw();if(fiveSec<=0){clearInterval(fiveTimerId);fiveTimerId=null;fivePerfEnd=0;fiveEndAt=null;$('#fiveRating').hidden=false}},200);
-    if(sync)send('five-start',{mode:fiveMode,durationMs:ms});
-  }
-  function resetFive(sync=true){clearInterval(fiveTimerId);fiveTimerId=null;fivePerfEnd=0;fiveEndAt=null;fiveSec=300;$('#fiveRating').hidden=true;fiveDraw();if(sync)send('five-reset')}
+  function startFive(endAt=null,sync=true){clearInterval(fiveTimerId);fiveEndAt=endAt||Date.now()+fiveSec*1000;fiveTimerId=setInterval(()=>{fiveDraw();if(fiveSec<=0){clearInterval(fiveTimerId);fiveTimerId=null;fiveEndAt=null;$('#fiveRating').hidden=false}},250);if(sync)send('five-start',{mode:fiveMode,endAt:fiveEndAt})}
+  function resetFive(sync=true){clearInterval(fiveTimerId);fiveTimerId=null;fiveEndAt=null;fiveSec=300;$('#fiveRating').hidden=true;fiveDraw();if(sync)send('five-reset')}
   $('#fiveRandomBtn')?.addEventListener('click',()=>setFiveMode(fiveModes[Math.floor(Math.random()*fiveModes.length)],true));$('#fiveStartBtn')?.addEventListener('click',()=>{if(!fiveTimerId)startFive(null,true)});$('#fiveResetBtn')?.addEventListener('click',()=>resetFive(true));
   document.querySelectorAll('#fiveRating [data-rating]').forEach(b=>b.addEventListener('click',()=>{const d=parse(RATINGS,[]);d.push({rating:+b.dataset.rating,mode:fiveMode,at:Date.now()});save(RATINGS,d);$('#fiveRatingHistory').textContent=`Остання оцінка: ${b.dataset.rating}/5`;$('#fiveRating').hidden=true;send('five-rating',{rating:+b.dataset.rating,mode:fiveMode})}));fiveDraw();
 
@@ -1247,7 +1212,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   function revealBlind(btn,r=null,sync=false){if(!btn||btn.classList.contains('opened'))return;r=r||blindResult();btn.classList.add('opened');btn.innerHTML=`<strong>${r.type}</strong><small>${esc(r.value)}</small>`;const res=$('#blindResult');res.hidden=false;res.innerHTML=`<small>${r.type}</small><strong>${esc(r.value)}</strong>`;if(sync)send('blind-reveal',{index:Number(btn.dataset.index||0),result:r})}
   $('#blindResetBtn')?.addEventListener('click',()=>newBlind(true));newBlind(false);
 
-  function addBattle(p,input){if(p!==extraGameViewRole())return;const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()}
+  function addBattle(p,input){const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()}
   function renderBattle(){const d=parse(BATTLE,[[],[]]);if($('#battleCounts'))$('#battleCounts').textContent=`${extraParticipantLabel(0,true)}: ${(d[0]||[]).length}/10 · ${extraParticipantLabel(1,true)}: ${(d[1]||[]).length}/10`;const w=parse(BWIN,[]);if($('#battleWinners'))$('#battleWinners').innerHTML=w.length?w.map(x=>`<span class="wish-chip">${esc(x)}</span>`).join(''):'<span class="muted">Ще немає переможців</span>'}
   $('#battleP1Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(0,'#battleP1Input')});$('#battleP2Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(1,'#battleP2Input')});
   function showBattle(a,b,sync=false){const arena=$('#battleArena');arena.hidden=false;arena.innerHTML=`<button class="battle-option" data-value="${esc(a)}">${esc(a)}</button><span>VS</span><button class="battle-option" data-value="${esc(b)}">${esc(b)}</button>`;arena.querySelectorAll('.battle-option').forEach(x=>x.onclick=()=>voteBattle(x.dataset.value,true));if(sync)send('battle-start',{a,b})}
@@ -1264,7 +1229,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     if(p.action==='scenario-mode')setScenarioMode(p.mode,false);
     if(p.action==='scenario-roll')rollScenario(p,true);
     if(p.action==='five-mode')setFiveMode(p.mode,false);
-    if(p.action==='five-start'){setFiveMode(p.mode,false);startFive(p.durationMs||300000,false)}
+    if(p.action==='five-start'){setFiveMode(p.mode,false);startFive(p.endAt,false)}
     if(p.action==='five-reset')resetFive(false);
     if(p.action==='five-rating'){if($('#fiveRatingHistory'))$('#fiveRatingHistory').textContent=`Остання оцінка: ${p.rating}/5`;if($('#fiveRating'))$('#fiveRating').hidden=true}
     if(p.action==='blind-reset')newBlind(false);
@@ -1273,10 +1238,10 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     if(p.action==='battle-vote')voteBattle(p.value,false);
     if(p.action==='quest-state')setQuest(p.quest,p.step,false);
   });
-  document.addEventListener('pair:changed',()=>{renderSecret();renderBattle()});document.addEventListener('session:role-changed',()=>{renderSecret();renderBattle()});renderSecret();
+  document.addEventListener('pair:changed',()=>{renderSecret();renderBattle()});renderSecret();
 })();
 
-// --- P2P session sync v34: deterministic game events + auto restore ---
+// --- P2P session sync v33: deterministic game events + auto restore ---
 (() => {
   'use strict';
   const $=s=>document.querySelector(s);
@@ -1304,7 +1269,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   }
   async function clearSessionMeta(){try{await PairDB.setMeta(SESSION_META,null)}catch{}}
 
-  const mirrorIds=['scenarioResult','fiveMode','fiveRating','fiveRatingHistory','secretWishResult','secretWishP1Count','secretWishP2Count','blindResult','battleCounts','battleWinners','questSteps','fortuneLevelSummary'];
+  const mirrorIds=['passionResultBox','passionTurnLabel','passionResult','directResultBox','directTurnLabel','directResult','randomPoseResultBox','randomPoseResultIndex','randomPoseResult','randomPoseDescription','randomPoseNumber','randomPoseCaption','scenarioResult','fiveTimer','fiveMode','fiveRating','fiveRatingHistory','secretWishResult','secretWishP1Count','secretWishP2Count','blindResult','battleCounts','battleWinners','questSteps','fortuneLevelSummary'];
   const slotSelectors=['#passionActionSlot .slot-track','#passionBodySlot .slot-track','#directBodySlot .slot-track','#scenarioMainReel .slot-track','#scenarioSecondReel .slot-track'];
   function captureUI(){
     const fields={};
