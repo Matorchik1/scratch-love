@@ -649,10 +649,15 @@ const pairStorage={
   const scoreFinishModal=$('#scoreFinishModal'), scoreFinishSummary=$('#scoreFinishSummary'),
         scoreFinishSelfVote=$('#scoreFinishSelfVote'), scoreFinishPartnerVote=$('#scoreFinishPartnerVote'),
         scoreFinishHint=$('#scoreFinishHint'), scoreFinishAgreeBtn=$('#scoreFinishAgreeBtn'), scoreFinishRejectBtn=$('#scoreFinishRejectBtn');
+  // Keep the active agreement in runtime as well as IndexedDB. This prevents a
+  // delayed pair snapshot from hiding an already-open confirmation dialog.
+  let scoreFinishRuntime=null;
   function getScoreFinishProposal(){
-    try{return JSON.parse(pairStorage.getItem(SCORE_FINISH_PROPOSAL_KEY)||'null')}catch{return null}
+    if(scoreFinishRuntime)return scoreFinishRuntime;
+    try{scoreFinishRuntime=JSON.parse(pairStorage.getItem(SCORE_FINISH_PROPOSAL_KEY)||'null');return scoreFinishRuntime}catch{return null}
   }
   function setScoreFinishProposal(proposal){
+    scoreFinishRuntime=proposal?JSON.parse(JSON.stringify(proposal)):null;
     if(proposal)pairStorage.setItem(SCORE_FINISH_PROPOSAL_KEY,JSON.stringify(proposal));
     else pairStorage.removeItem(SCORE_FINISH_PROPOSAL_KEY);
     PairDB.save?.();
@@ -694,6 +699,7 @@ const pairStorage={
     const existing=getScoreFinishProposal();
     const proposal=forcedProposal||existing||{id:'score_finish_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),score:[Number(score[0])||0,Number(score[1])||0],approvals:[false,false],requestedBy:getViewRole(),createdAt:new Date().toISOString()};
     setScoreFinishProposal(proposal);
+    if(scoreFinishModal)scoreFinishModal.hidden=false;
     if(syncSession&&window.SessionSync?.connected&&!forcedProposal)window.SessionSync.replyUI?.('game-action',{action:'score-finish-propose',proposal});
   }
   function voteScoreFinish(agree,syncSession=true,forcedRole=null,proposalId=null){
@@ -708,7 +714,7 @@ const pairStorage={
   scoreFinishAgreeBtn?.addEventListener('click',()=>voteScoreFinish(true,true));
   scoreFinishRejectBtn?.addEventListener('click',()=>voteScoreFinish(false,true));
   $('#resetScoreBtn')?.addEventListener('click',()=>{if(getScoreFinishProposal()){toast('Спочатку завершіть або відхиліть підведення результату');return;}setScore([0,0]);setTurn(0);syncPlayers()});
-  document.addEventListener('pair:changed',()=>syncPlayers());
+  document.addEventListener('pair:changed',()=>{syncPlayers();renderScoreFinishProposal();});
 
   function updateRelativeGameLabels(){
     const self=getViewRole(), partner=(self+1)%2, names=getNames();

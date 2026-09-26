@@ -555,3 +555,42 @@ img,canvas,svg{max-width:100%}
   .games-group-header{padding:12px 13px;border-radius:16px}.games-group-header>span{font-size:21px}.games-group-header strong{font-size:14px}.games-group-header small{font-size:11px}
   .score-finish-modal{padding:12px;align-items:end}.score-finish-dialog{padding:20px 16px 18px;border-radius:26px 26px 18px 18px}.score-finish-votes{grid-template-columns:1fr}.score-finish-actions{grid-template-columns:1fr}.score-finish-dialog h3{font-size:21px}
 }
+
+/* v48: global score directly under COUPLE GAMES · 18+ */
+.games-score-top{
+  margin:10px 0 14px;
+  display:grid;
+  grid-template-columns:minmax(110px,1fr) auto minmax(110px,1fr);
+  align-items:center;
+  gap:12px;
+  width:min(680px,100%);
+  padding:12px 14px;
+  border:1px solid rgba(255,255,255,.10);
+  border-radius:20px;
+  background:linear-gradient(145deg,rgba(34,27,36,.94),rgba(18,15,20,.96));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 32px rgba(0,0,0,.18);
+}
+.games-score-side{display:grid;justify-items:center;gap:0;min-width:0}
+.games-score-side small{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:850}
+.games-score-side strong{font-size:30px;line-height:1;color:var(--accent2);font-weight:950;margin:2px 0}
+.games-score-side span{font-size:10px;color:var(--muted)}
+.games-score-center{display:grid;justify-items:center;gap:5px}
+.games-score-center .btn{white-space:nowrap}
+.games-score-center .text-btn{font-size:11px}
+.players-panel.relative-players{
+  grid-template-columns:1fr minmax(120px,.85fr) 1fr!important;
+  align-items:stretch;
+}
+.players-panel.relative-players .turn-box{grid-column:auto!important;grid-row:auto!important}
+@media(max-width:700px){
+  .games-score-top{grid-template-columns:1fr 1fr;gap:8px;padding:10px;border-radius:17px}
+  .games-score-center{grid-column:1/-1;grid-row:2;grid-template-columns:1fr auto;width:100%;align-items:center}
+  .games-score-center .btn{width:100%}
+  .players-panel.relative-players{grid-template-columns:1fr 1fr!important}
+  .players-panel.relative-players .turn-box{grid-column:1/-1!important;grid-row:auto!important}
+}
+@media(max-width:420px){
+  .games-score-side strong{font-size:26px}
+  .games-score-center{grid-template-columns:1fr}
+  .games-score-center .text-btn{justify-self:center}
+}
