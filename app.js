@@ -953,7 +953,7 @@ const pairStorage={
           if(progressSection&&!progressSection.hidden)renderProgressPage();
         });
         row.appendChild(b);
-        const plan=document.createElement('button'); plan.type='button'; plan.className='place-plan'+(planned.has(id)&&!done.has(id)?' active':''); plan.title=planned.has(id)?'Прибрати із запланованих':'Додати в заплановано'; plan.setAttribute('aria-label',`${planned.has(id)?'Прибрати із запланованих':'Запланувати'} ${item.label}`); plan.textContent=planned.has(id)&&!done.has(id)?'В планах':'Запланувати'; plan.disabled=done.has(id);
+        const plan=document.createElement('button'); plan.type='button'; plan.className='place-plan'+(planned.has(id)&&!done.has(id)?' active':''); plan.title=planned.has(id)?'Прибрати із запланованих':'Додати в заплановано'; plan.setAttribute('aria-label',`${planned.has(id)?'Прибрати із запланованих':'Запланувати'} ${item.label}`); plan.textContent=planned.has(id)&&!done.has(id)?'В планах ✓':'Запланувати'; plan.disabled=done.has(id);
         plan.addEventListener('click',()=>{if(done.has(id))return;if(window.CouplePlanning?.propose){window.CouplePlanning.propose({type:'place-plan',targetId:id,label:item.label,value:!planned.has(id)});return;}planned.has(id)?planned.delete(id):planned.add(id);pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));renderPlaces();if(progressSection&&!progressSection.hidden)renderProgressPage()});
         row.appendChild(plan);
         if(item.custom){
@@ -2023,11 +2023,14 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
           <div class="purchase-title-row"><h3>${esc(item.name||'Без назви')}</h3>${isMine?`<div class="purchase-owner-actions"><button type="button" class="purchase-edit-btn" data-edit-purchase="${esc(item.id)}">Редагувати</button><button type="button" class="purchase-delete-btn" data-delete-purchase="${esc(item.id)}">Видалити</button></div>`:''}</div>
           <div class="purchase-price-row"><strong>${fmt(price)}</strong><span>× ${qty}</span><b>${qty>1?`= ${fmt(itemTotal)}`:''}</b></div>
           ${productLink}
-          <div class="purchase-status-actions" data-purchase-status-id="${esc(item.id)}">
-            <button type="button" class="purchase-plan-btn ${item.planned&&!item.purchased?'active':''}" data-toggle-planned="${item.planned&&!item.purchased?'0':'1'}">${item.planned&&!item.purchased?'Прибрати з планів':'🗓️ В планах'}</button>
-            <button type="button" class="purchase-bought-btn ${item.purchased?'active':''}" data-toggle-purchased="${item.purchased?'0':'1'}">${item.purchased?'Повернути в список':'✓ Придбано'}</button>
-          </div>
-          <div class="purchase-priority">
+          <section class="purchase-ui-section purchase-status-section">
+            <div class="purchase-ui-section-head"><span>Статус</span><small>${item.purchased?'Придбано':item.planned?'У планах':'Активний список'}</small></div>
+            <div class="purchase-status-actions" data-purchase-status-id="${esc(item.id)}">
+              <button type="button" class="purchase-plan-btn ${item.planned&&!item.purchased?'active':''}" data-toggle-planned="${item.planned&&!item.purchased?'0':'1'}">${item.planned&&!item.purchased?'В планах ✓':'Додати в плани'}</button>
+              <button type="button" class="purchase-bought-btn ${item.purchased?'active':''}" data-toggle-purchased="${item.purchased?'0':'1'}">${item.purchased?'Придбано ✓':'Позначити придбаним'}</button>
+            </div>
+          </section>
+          <div class="purchase-priority purchase-ui-section">
             <div class="purchase-priority-head"><small>Пріоритет покупки</small><strong class="priority-value ${priority||'none'}">${priority?priorityLabels[priority]:'Не визначено'}</strong></div>
             ${canSetPriority?`<div class="purchase-priority-actions" data-purchase-priority-id="${esc(item.id)}">
               <button type="button" class="purchase-priority-btn ${priority==='low'?'active':''}" data-priority="low">Низький</button>
@@ -2036,14 +2039,17 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
               <button type="button" class="purchase-priority-btn ${priority==='urgent'?'active':''}" data-priority="urgent">Дуже високий</button>
             </div>`:`<div class="purchase-priority-note">Пріоритет виставляє ваш партнер</div>`}
           </div>
-          <div class="purchase-votes">
-            <div class="purchase-vote-status"><small>Ви</small><strong class="${myVote||'none'}">${voteText(myVote)}</strong></div>
-            <div class="purchase-vote-status"><small>Ваш партнер</small><strong class="${partnerVote||'none'}">${voteText(partnerVote)}</strong></div>
-          </div>
-          <div class="purchase-vote-actions" data-purchase-id="${esc(item.id)}">
-            <button type="button" class="purchase-vote-btn yes ${myVote==='yes'?'active':''}" data-vote="yes">Потрібен</button>
-            <button type="button" class="purchase-vote-btn no ${myVote==='no'?'active':''}" data-vote="no">Не потрібен</button>
-          </div>
+          <section class="purchase-ui-section purchase-voting-section">
+            <div class="purchase-ui-section-head"><span>Голосування</span><small>Чи потрібен цей товар?</small></div>
+            <div class="purchase-votes">
+              <div class="purchase-vote-status"><small>Ви</small><strong class="${myVote||'none'}">${voteText(myVote)}</strong></div>
+              <div class="purchase-vote-status"><small>Ваш партнер</small><strong class="${partnerVote||'none'}">${voteText(partnerVote)}</strong></div>
+            </div>
+            <div class="purchase-vote-actions" data-purchase-id="${esc(item.id)}">
+              <button type="button" class="purchase-vote-btn yes ${myVote==='yes'?'active':''}" data-vote="yes">Потрібен</button>
+              <button type="button" class="purchase-vote-btn no ${myVote==='no'?'active':''}" data-vote="no">Не потрібен</button>
+            </div>
+          </section>
         </div>`;
       const bad=card.querySelector('img');if(bad)bad.addEventListener('error',()=>{const wrap=bad.parentElement;wrap.innerHTML='<div class="purchase-image-placeholder">🛍️</div>'},{once:true});
       listEl.appendChild(card);

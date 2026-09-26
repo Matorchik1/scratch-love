@@ -1666,3 +1666,271 @@ img,canvas,svg{max-width:100%}
 /* v63: recipient badge by actual pair player */
 .purchase-for-badge.player0{color:#ffadd0;background:rgba(255,88,151,.09);border-color:rgba(255,88,151,.16)}
 .purchase-for-badge.player1{color:#c8b8ff;background:rgba(135,111,255,.10);border-color:rgba(135,111,255,.18)}
+
+/* v64: clean capsule places + clearer purchase cards */
+.place-grid{
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:14px!important;
+}
+.place-item-row{
+  position:relative;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:10px!important;
+  min-height:66px!important;
+  padding:8px 10px!important;
+  border:1px solid rgba(255,255,255,.075)!important;
+  border-radius:999px!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.035),rgba(255,255,255,.018))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 8px 18px rgba(0,0,0,.12)!important;
+}
+.place-item-row:hover{
+  border-color:rgba(255,255,255,.12)!important;
+  background:linear-gradient(145deg,rgba(255,255,255,.05),rgba(255,255,255,.02))!important;
+}
+.place-item{
+  flex:1 1 auto!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:8px!important;
+  min-height:48px!important;
+  padding:0 8px!important;
+  text-align:center!important;
+  border:0!important;
+  background:transparent!important;
+  font-size:14px!important;
+  line-height:1.25!important;
+  color:#f4edf3!important;
+}
+.place-item>span{
+  flex:0 0 auto;
+  display:grid;
+  place-items:center;
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.025);
+  color:#cabdca;
+  font-size:12px;
+}
+.place-item.done>span{
+  border-color:rgba(92,218,148,.32);
+  background:rgba(92,218,148,.11);
+  color:#9bf0bc;
+}
+.place-item.planned>span{
+  border-color:rgba(255,190,92,.30);
+  background:rgba(255,190,92,.10);
+  color:#ffd497;
+}
+.place-plan{
+  flex:0 0 auto!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-width:0!important;
+  min-height:32px!important;
+  height:32px!important;
+  padding:0 10px!important;
+  margin:0!important;
+  border-radius:999px!important;
+  font-size:9px!important;
+  white-space:nowrap!important;
+}
+.place-delete{
+  flex:0 0 auto;
+  width:30px;
+  height:30px;
+  border-radius:50%!important;
+}
+
+.purchase-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:18px!important;
+}
+.purchase-card{
+  grid-template-columns:minmax(190px,34%) minmax(0,1fr)!important;
+  min-height:390px!important;
+  border-radius:26px!important;
+  align-items:stretch!important;
+}
+.purchase-image{
+  min-height:100%!important;
+  height:100%!important;
+  padding:18px!important;
+  background:#f6f3f7!important;
+  border-right:1px solid rgba(255,255,255,.06)!important;
+}
+.purchase-image img{
+  position:static!important;
+  width:100%!important;
+  height:100%!important;
+  max-height:none!important;
+  object-fit:contain!important;
+  object-position:center!important;
+  background:transparent!important;
+}
+.purchase-card-body{
+  display:flex!important;
+  flex-direction:column!important;
+  gap:12px!important;
+  padding:18px!important;
+}
+.purchase-card-top{
+  margin-bottom:2px!important;
+}
+.purchase-title-row{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:12px!important;
+  align-items:start!important;
+}
+.purchase-title-row h3{
+  font-size:20px!important;
+  line-height:1.25!important;
+}
+.purchase-owner-actions{
+  display:flex!important;
+  gap:7px!important;
+  min-width:auto!important;
+}
+.purchase-edit-btn,.purchase-delete-btn{
+  min-height:36px!important;
+  padding:7px 10px!important;
+  font-size:10px!important;
+}
+.purchase-price-row{
+  margin:0!important;
+  padding-bottom:2px;
+}
+.purchase-price-row strong{font-size:26px!important}
+.purchase-link{
+  margin:0!important;
+  min-height:34px!important;
+}
+.purchase-ui-section,
+.purchase-priority{
+  display:grid!important;
+  gap:10px!important;
+  padding:12px!important;
+  border:1px solid rgba(255,255,255,.065)!important;
+  border-radius:17px!important;
+  background:rgba(255,255,255,.022)!important;
+}
+.purchase-ui-section-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.purchase-ui-section-head>span,
+.purchase-priority-head small{
+  font-size:10px!important;
+  text-transform:uppercase;
+  letter-spacing:.11em;
+  font-weight:900!important;
+  color:#c8bcc7!important;
+}
+.purchase-ui-section-head>small{
+  color:#938893;
+  font-size:10px;
+  text-align:right;
+}
+.purchase-status-section{
+  border-color:rgba(255,183,79,.09)!important;
+}
+.purchase-card.is-planned .purchase-status-section{
+  border-color:rgba(255,184,75,.24)!important;
+  background:rgba(255,184,75,.045)!important;
+}
+.purchase-card.is-purchased .purchase-status-section{
+  border-color:rgba(83,219,143,.24)!important;
+  background:rgba(83,219,143,.045)!important;
+}
+.purchase-status-actions{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+}
+.purchase-plan-btn,
+.purchase-bought-btn{
+  min-height:42px!important;
+  font-size:10px!important;
+  line-height:1.15!important;
+}
+.purchase-voting-section{
+  margin-top:auto!important;
+}
+.purchase-votes{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+}
+.purchase-vote-actions{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+}
+.purchase-priority{margin:0!important}
+.purchase-priority-actions{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+
+@media(max-width:1050px){
+  .purchase-grid{grid-template-columns:1fr!important}
+  .place-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:720px){
+  .place-grid{grid-template-columns:1fr!important;gap:10px!important}
+  .place-item-row{
+    min-height:60px!important;
+    padding:7px 9px!important;
+  }
+  .place-item{font-size:14px!important}
+  .purchase-card{
+    grid-template-columns:1fr!important;
+    min-height:0!important;
+  }
+  .purchase-image{
+    height:260px!important;
+    min-height:260px!important;
+    border-right:0!important;
+    border-bottom:1px solid rgba(255,255,255,.06)!important;
+    padding:14px!important;
+  }
+  .purchase-card-body{padding:15px!important}
+  .purchase-title-row{grid-template-columns:1fr!important}
+  .purchase-owner-actions{width:100%!important;display:grid!important;grid-template-columns:1fr 1fr!important}
+}
+@media(max-width:480px){
+  .place-item-row{
+    border-radius:24px!important;
+    align-items:center!important;
+  }
+  .place-item{
+    justify-content:flex-start!important;
+    text-align:left!important;
+    padding-left:2px!important;
+  }
+  .place-plan{
+    width:32px!important;
+    min-width:32px!important;
+    padding:0!important;
+    font-size:0!important;
+  }
+  .place-plan::before{content:'＋'!important;font-size:14px!important}
+  .place-plan.active::before{content:'✓'!important}
+  .purchase-image{height:230px!important;min-height:230px!important}
+  .purchase-status-actions,
+  .purchase-vote-actions,
+  .purchase-priority-actions{
+    grid-template-columns:1fr!important;
+  }
+  .purchase-votes{grid-template-columns:1fr 1fr!important}
+}
