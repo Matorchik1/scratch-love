@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111014" />
+  <title>Календар поз MF · 18+</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="age-gate" id="ageGate" hidden>
+    <div class="gate-card">
+      <div class="eyebrow">18+</div>
+      <h1>Контент для дорослих</h1>
+      <p>Продовжуючи, ви підтверджуєте, що вам виповнилося 18 років.</p>
+      <div class="gate-actions">
+        <button class="btn primary" id="confirmAge">Мені є 18</button>
+        <button class="btn ghost" id="leaveSite">Вийти</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="pair-gate" id="pairGate">
+    <div class="pair-card">
+      <div class="eyebrow">ПРОФІЛЬ ПАРИ</div>
+      <h1>Оберіть пару</h1>
+      <p>Кожна пара має окремий прогрес календаря, місця, рахунок та чергу ходу.</p>
+      <div id="pairList" class="pair-list"></div>
+      <div class="pair-create">
+        <h2>Створити нову пару</h2>
+        <div class="pair-create-grid">
+          <label>Гравець 1<input id="newPairP1" maxlength="24" placeholder="Ім’я"></label>
+          <label>Стать<select id="newPairG1"><option value="male">Чоловіча</option><option value="female">Жіноча</option></select></label>
+          <label>Гравець 2<input id="newPairP2" maxlength="24" placeholder="Ім’я"></label>
+          <label>Стать<select id="newPairG2"><option value="female">Жіноча</option><option value="male">Чоловіча</option></select></label>
+        </div>
+        <button class="btn primary" id="createPairBtn" type="button">Створити пару</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="app-shell" id="appShell" hidden>
+    <div class="pair-bar"><div><small>Активна пара</small><strong id="activePairLabel">—</strong></div><button id="switchPairBtn" class="btn secondary compact-btn" type="button">Змінити пару</button></div>
+    <nav class="main-tabs" aria-label="Розділи">
+      <button class="main-tab active" id="calendarTabBtn" type="button">Календар поз</button>
+      <button class="main-tab" id="placesTabBtn" type="button">Познач місця</button>
+      <button class="main-tab" id="gamesTabBtn" type="button">Ігри</button>
+    </nav>
+
+    <section id="calendarSection">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">MF · POSITION CHALLENGE</div>
+        <h1>Календар поз <span>18+</span></h1>
+        <p class="subtitle">312 позицій у 7 рівнях. Рівні 1–4 відкриваються послідовно після 100% попереднього. Акробатичний, «У ванній» та «У машині» можна відкрити окремо кнопкою «Дозволити». Усередині відкритого рівня доступна будь-яка картка.</p>
+      </div>
+    </header>
+
+    <section class="progress-panel">
+      <div class="progress-copy">
+        <div><strong id="calendarDone">0</strong> / <span id="calendarTotal">312</span> виконано</div>
+        <span id="calendarPercent">0%</span>
+      </div>
+      <div class="progress-track"><div id="calendarProgress" class="progress-fill"></div></div>
+      <div class="progress-foot">
+        <span id="calendarStatus">Легкий відкрито</span>
+        <button id="resetCalendarBtn" class="text-btn danger">Скинути прогрес</button>
+      </div>
+    </section>
+
+    <section class="dev-panel" aria-label="Інструменти розробника">
+      <div class="dev-copy">
+        <div class="eyebrow">DEV · ТЕСТУВАННЯ</div>
+        <strong>Інструменти розробника</strong>
+        <span>Цей блок можна прибрати перед публікацією.</span>
+      </div>
+      <div class="dev-actions">
+        <button id="devUnlockAllBtn" class="btn secondary" type="button">Відкрити все</button>
+        <button id="devShowAllBtn" class="btn primary" type="button">Показати всі пози</button>
+      </div>
+    </section>
+
+    <section id="categoryList" class="category-list" aria-live="polite"></section>
+    </section>
+
+
+    <section id="placesSection" class="games-section" hidden>
+      <header class="hero games-hero"><div><div class="eyebrow">📍 МІСЦЯ</div><h1>Познач місця</h1><p class="subtitle">Відзначайте місця, де ви вже були разом. Дані зберігаються окремо для активної пари.</p></div></header>
+      <article class="game-card single-game-view">
+        <div class="game-card-head"><div><h2>Ваш список місць</h2><p>Натисніть на місце, щоб відзначити його. Повторний клік знімає позначку.</p></div><div class="place-progress"><strong id="placesDone">0</strong>/<span id="placesTotal">0</span></div></div>
+
+        <details class="custom-place-card" open>
+          <summary>＋ Додати своє місце</summary>
+          <form id="customPlaceForm" class="custom-place-form">
+            <input id="customPlaceInput" maxlength="70" placeholder="Наприклад: На дачі" autocomplete="off" required>
+            <select id="customPlaceCategory" aria-label="Категорія місця"></select>
+            <input id="customPlaceNewCategory" maxlength="40" placeholder="Нова категорія" autocomplete="off" hidden>
+            <button class="btn primary" type="submit">Додати</button>
+          </form>
+          <p class="custom-place-hint">Вибери існуючу категорію або «＋ Нова категорія». Власні місця зберігаються лише для цієї пари.</p>
+        </details>
+
+        <div id="placesCategories" class="places-categories"></div>
+      </article>
+    </section>
+
+    <section id="gamesSection" class="games-section" hidden>
+      <header class="hero games-hero">
+        <div>
+          <div class="eyebrow">COUPLE GAMES · 18+</div>
+          <h1>Ігри для двох</h1>
+          <p class="subtitle">Оберіть гру. Після вибору відкривається тільки її екран.</p>
+        </div>
+      </header>
+
+      <section id="gamesMenu" class="games-menu">
+        <button class="game-launch-card" data-game="passion" type="button">
+          <span class="game-launch-icon" aria-hidden="true">🎰</span>
+          <span><strong>Кубик Страсті</strong><small>Дія + частина тіла, по черзі для двох</small></span>
+          <span class="game-launch-arrow">›</span>
+        </button>
+        <button class="game-launch-card" data-game="direct" type="button">
+          <span class="game-launch-icon" aria-hidden="true">🎲</span>
+          <span><strong>Прямолінійний кубик</strong><small>Оберіть дію та прокрутіть частини тіла</small></span>
+          <span class="game-launch-arrow">›</span>
+        </button>
+        <button class="game-launch-card" data-game="randomPose" type="button">
+          <span class="game-launch-icon" aria-hidden="true">🎡</span>
+          <span><strong>Випадкова поза</strong><small>Крутіть колесо та отримайте випадкову MF-позу</small></span>
+          <span class="game-launch-arrow">›</span>
+        </button>
+      </section>
+
+      <section id="gameDetail" class="game-detail" hidden>
+        <div class="game-detail-topbar">
+          <button id="backToGamesBtn" class="btn secondary compact-btn" type="button">← Усі ігри</button>
+          <div id="activeGameTitle" class="active-game-title"></div>
+        </div>
+
+        <section id="playersPanel" class="players-panel" hidden>
+          <div class="player-field player-profile">
+            <label for="player1Name">Гравець 1</label>
+            <input id="player1Name" maxlength="24" value="Гравець 1">
+            <select id="player1Gender" aria-label="Стать гравця 1">
+              <option value="male">Чоловіча</option>
+              <option value="female">Жіноча</option>
+            </select>
+          </div>
+          <div class="score-card"><span id="player1Score">0</span><small>балів</small></div>
+          <div class="turn-box"><small>Хід</small><strong id="currentPlayerName">Гравець 1</strong><em id="currentTargetName">→ Гравець 2</em></div>
+          <div class="score-card"><span id="player2Score">0</span><small>балів</small></div>
+          <div class="player-field player-profile">
+            <label for="player2Name">Гравець 2</label>
+            <input id="player2Name" maxlength="24" value="Гравець 2">
+            <select id="player2Gender" aria-label="Стать гравця 2">
+              <option value="female">Жіноча</option>
+              <option value="male">Чоловіча</option>
+            </select>
+          </div>
+          <button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button>
+        </section>
+
+        <details id="rouletteCustomPanel" class="custom-options-card" hidden>
+          <summary>＋ Власні варіанти рулеток</summary>
+          <p>Варіанти зберігаються тільки для активної пари. Власна дія додається у «Кубик Страсті», а власна частина тіла — в обидві рулетки частин тіла.</p>
+          <div class="custom-options-grid">
+            <section class="custom-option-section">
+              <h3>Свої дії</h3>
+              <form id="customActionForm" class="custom-option-form">
+                <input id="customActionInput" maxlength="40" placeholder="Наприклад: Лоскотати" autocomplete="off">
+                <button class="btn secondary" type="submit">Додати</button>
+              </form>
+              <div id="customActionList" class="custom-chip-list"></div>
+            </section>
+            <section class="custom-option-section">
+              <h3>Свої частини тіла</h3>
+              <form id="customBodyForm" class="custom-option-form custom-body-form">
+                <input id="customBodyInput" maxlength="40" placeholder="Назва" autocomplete="off">
+                <select id="customBodyGender" aria-label="Для якої статі">
+                  <option value="any">Для всіх</option>
+                  <option value="male">Для чоловіка</option>
+                  <option value="female">Для жінки</option>
+                </select>
+                <button class="btn secondary" type="submit">Додати</button>
+              </form>
+              <div id="customBodyList" class="custom-chip-list"></div>
+            </section>
+          </div>
+        </details>
+
+        <article class="game-card single-game-view" id="passionGameView" hidden>
+          <div class="game-card-head">
+            <div><div class="eyebrow">🎰 КУБИК СТРАСТІ</div><h2>Дія + частина тіла</h2><p>Обидва барабани прокручуються одночасно. Видимі сусідні варіанти — як у справжньому слоті.</p></div>
+          </div>
+          <div class="slot-stack">
+            <div class="slot-block">
+              <span class="reel-label">Дія</span>
+              <div class="slot-window" id="passionActionReel" aria-label="Рулетка дій"><div class="slot-track"></div><div class="slot-focus"></div></div>
+            </div>
+            <div class="slot-block">
+              <span class="reel-label">Частина тіла</span>
+              <div class="slot-window" id="passionBodyReel" aria-label="Рулетка частин тіла"><div class="slot-track"></div><div class="slot-focus"></div></div>
+            </div>
+          </div>
+          <button class="btn primary roll-btn big-roll" id="passionRollBtn" type="button">Кинути</button>
+          <div class="result-box" id="passionResultBox" hidden>
+            <small id="passionTurnLabel"></small>
+            <strong id="passionResult">—</strong>
+            <div class="result-actions"><button class="btn primary" id="passionDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="passionNoBtn" type="button">Ні</button></div>
+          </div>
+        </article>
+
+        <article class="game-card single-game-view" id="directGameView" hidden>
+          <div class="game-card-head">
+            <div><div class="eyebrow">🎲 ПРЯМОЛІНІЙНИЙ КУБИК</div><h2>Оберіть дію</h2><p>Після вибору дії прокрутіть барабан із частинами тіла.</p></div>
+          </div>
+          <div class="action-choice" id="directActionChoice">
+            <button class="choice-btn active" data-action="Стиснути" type="button">Стиснути</button>
+            <button class="choice-btn" data-action="Облизати" type="button">Облизати</button>
+            <button class="choice-btn" data-action="Смоктати" type="button">Смоктати</button>
+          </div>
+          <div class="slot-stack one-slot">
+            <div class="slot-block">
+              <span class="reel-label">Частина тіла</span>
+              <div class="slot-window" id="directBodyReel" aria-label="Рулетка частин тіла"><div class="slot-track"></div><div class="slot-focus"></div></div>
+            </div>
+          </div>
+          <button class="btn primary roll-btn big-roll" id="directRollBtn" type="button">Кинути</button>
+          <div class="result-box" id="directResultBox" hidden>
+            <small id="directTurnLabel"></small>
+            <strong id="directResult">—</strong>
+            <div class="result-actions"><button class="btn primary" id="directDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="directNoBtn" type="button">Ні</button></div>
+          </div>
+        </article>
+
+        <article class="game-card single-game-view" id="randomPoseGameView" hidden>
+          <div class="game-card-head">
+            <div><div class="eyebrow">🎡 ВИПАДКОВА ПОЗА</div><h2>Колесо фортуни</h2><p>Натисніть «Крути». Колесо обертається, а в центрі швидко змінюються пози, доки не буде обрано одну випадкову.</p></div>
+          </div>
+          <div class="fortune-level-filter" id="fortuneLevelFilter">
+            <div class="fortune-level-filter-head">
+              <div><strong>Рівні поз</strong><small>Оберіть один або кілька рівнів для випадкового вибору</small></div>
+              <button class="btn secondary compact" id="fortuneSelectAllLevelsBtn" type="button">Обрати всі</button>
+            </div>
+            <div class="fortune-level-options" id="fortuneLevelOptions"></div>
+            <div class="fortune-level-summary" id="fortuneLevelSummary"></div>
+          </div>
+          <div class="fortune-stage">
+            <div class="fortune-pointer" aria-hidden="true"></div>
+            <div class="fortune-wheel" id="fortuneWheel">
+              <div class="fortune-wheel-rotor" id="fortuneWheelRotor">
+                <img class="fortune-wheel-art" src="images/ui/fortune_wheel.png" alt="" aria-hidden="true">
+                <img class="fortune-wheel-frame" src="images/ui/fortune_wheel_frame.png" alt="" aria-hidden="true">
+              </div>
+              <div class="fortune-center">
+                <img id="randomPosePreview" src="images/positions/mf_position_1.png" alt="Випадкова поза">
+                <span id="randomPoseNumber">Поза 1</span>
+              </div>
+            </div>
+          </div>
+          <button class="btn primary big-roll fortune-spin-btn" id="randomPoseSpinBtn" type="button">Крути</button>
+          <div class="result-box random-pose-result" id="randomPoseResultBox" hidden>
+            <small>Обрана випадкова поза</small>
+            <strong id="randomPoseResult">Поза 1</strong>
+            <button class="btn secondary" id="randomPoseOpenBtn" type="button">Відкрити позу крупніше</button>
+          </div>
+        </article>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="positionDialog" class="dialog position-dialog">
+    <div class="position-modal">
+      <div class="dialog-head position-modal-head">
+        <div>
+          <div class="eyebrow" id="positionCategoryTitle">ЛЕГКИЙ</div>
+          <h2 id="positionDayTitle">Позиція 1</h2>
+        </div>
+        <button class="icon-btn" id="closePositionDialog" aria-label="Закрити">×</button>
+      </div>
+      <div class="position-scratch-stage">
+        <img id="calendarPositionImage" class="calendar-position-image" alt="Позиція" />
+        <canvas id="positionScratchCanvas" aria-label="Стираємий шар позиції"></canvas>
+      </div>
+      <p class="position-instruction" id="positionInstruction">Зітріть захисний шар, щоб відкрити позицію.</p>
+      <div class="position-dialog-actions">
+        <button class="btn secondary" id="revealPositionBtn">Відкрити</button>
+        <button class="btn primary" id="completePositionBtn" disabled>Виконано ✓</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="allPositionsDialog" class="dialog all-positions-dialog">
+    <div class="all-positions-modal">
+      <div class="dialog-head">
+        <div>
+          <div class="eyebrow">DEV · MF</div>
+          <h2>Усі 312 пози</h2>
+          <p class="gallery-note">Галерея не змінює прогрес. Натисніть на будь-яку позу, щоб відкрити її для тесту.</p>
+        </div>
+        <button class="icon-btn" id="closeAllPositionsDialog" aria-label="Закрити">×</button>
+      </div>
+      <div id="allPositionsGrid" class="all-positions-grid"></div>
+    </div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="positions.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
