@@ -1730,7 +1730,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     }finally{setTimeout(()=>uiApply=false,100)}
   }
   function scheduleUISnapshot(delay=140){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{if(conn?.open&&!uiApply)send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now()})},delay)}
-  window.SessionSync={sendUI,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open}};
+  window.SessionSync={sendUI,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open},get ready(){return !!conn?.open&&!restoring&&(localRole===0||localRole===1)&&(remoteRole===0||remoteRole===1)&&remoteRole!==localRole}};
 
   function clearReconnect(){clearTimeout(reconnectTimer);reconnectTimer=null;reconnectAttempts=0}
   function scheduleGuestReconnect(sessionCode){
@@ -1863,4 +1863,125 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     }
   }
   setTimeout(autoRestore,350);
+})();
+
+
+// --- v51: require a fully synchronized partner session for every shared-state mutation ---
+(() => {
+  'use strict';
+  const NEED_SESSION_TEXT='Для змін потрібна активна сесія з партнером';
+  let noticeTimer=null, lastNotice=0;
+
+  function sessionReady(){ return !!window.SessionSync?.ready; }
+  function showSessionRequired(){
+    const now=Date.now();
+    if(now-lastNotice<350)return;
+    lastNotice=now;
+    let el=document.getElementById('toast');
+    if(!el){
+      el=document.createElement('div');
+      el.id='sessionGuardToast';
+      el.className='toast';
+      document.body.appendChild(el);
+    }
+    el.textContent=NEED_SESSION_TEXT;
+    el.classList.add('show');
+    clearTimeout(noticeTimer);
+    noticeTimer=setTimeout(()=>el.classList.remove('show'),2600);
+  }
+
+  function isViewOnlyButton(btn){
+    if(!btn)return false;
+    if(btn.matches('#backToGamesBtn,#randomPoseOpenBtn,#closePositionDialog,#closeDeferDialog,#closeProgressDialog,#closeAllPositionsDialog'))return true;
+    const txt=(btn.textContent||'').trim();
+    if(/^Відкрити\b/i.test(txt))return true;
+    return false;
+  }
+
+  function isMutationTarget(target){
+    if(!(target instanceof Element))return false;
+
+    // Pair/profile/session setup must stay available, otherwise a session could never be created.
+    if(target.closest('#pairGate,.pair-bar,.main-tabs,#gamesMenu'))return false;
+
+    // Calendar: opening cards/progress is view-only; these controls actually change shared progress/unlocks.
+    if(target.closest('#calendarSection')){
+      if(target.closest('#resetCalendarBtn,#devUnlockAllBtn,.allow-level-btn'))return true;
+      return false;
+    }
+
+    // Places are shared pair data: marks, custom places, category selection while adding, deletion, etc.
+    if(target.closest('#placesSection')){
+      return !!target.closest('button,input,select,textarea,form,.place-item,[data-place-id]');
+    }
+
+    // Progress page mutations are wish/debt completion buttons. Pure reading remains available.
+    if(target.closest('#progressSection')){
+      return !!target.closest('button,input,select,textarea,form');
+    }
+
+    // Position scratch/reveal/defer/complete mutate shared position state; closing remains view-only.
+    if(target.closest('#positionDialog')){
+      if(target.closest('#closePositionDialog'))return false;
+      return !!target.closest('button,input,select,textarea,form,#positionScratchCanvas');
+    }
+    if(target.closest('#deferDialog')){
+      if(target.closest('#closeDeferDialog'))return false;
+      return !!target.closest('button,input,select,textarea,form');
+    }
+    if(target.closest('#progressDialog')){
+      const btn=target.closest('button');
+      if(btn&&isViewOnlyButton(btn))return false;
+      return !!target.closest('button,input,select,textarea,form');
+    }
+
+    // Every interactive control inside an opened game changes shared gameplay, except navigation/zoom.
+    if(target.closest('#gameDetail')){
+      const btn=target.closest('button');
+      if(btn&&isViewOnlyButton(btn))return false;
+      return !!target.closest('button,input,select,textarea,form,[contenteditable="true"]');
+    }
+
+    // Score-finish confirmation is outside gameDetail and is shared state too.
+    if(target.closest('#scoreFinishModal')){
+      return !!target.closest('button,input,select,textarea,form');
+    }
+
+    // Dynamically rendered debt buttons inside the legacy modal/page.
+    if(target.closest('.deferred-card-actions')){
+      const btn=target.closest('button');
+      if(btn&&isViewOnlyButton(btn))return false;
+      return !!btn;
+    }
+    return false;
+  }
+
+  function blockIfNeeded(e){
+    if(sessionReady() || !isMutationTarget(e.target))return false;
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation?.();
+    showSessionRequired();
+    return true;
+  }
+
+  // Capture phase runs before existing game/progress handlers, so no local-only mutation can slip through.
+  document.addEventListener('click',blockIfNeeded,true);
+  document.addEventListener('pointerdown',e=>{
+    if(sessionReady()||!isMutationTarget(e.target))return;
+    // For text/select/canvas controls stop interaction immediately. Buttons are also caught on click/keyboard.
+    if(e.target.closest('input,select,textarea,#positionScratchCanvas,.place-item,[data-place-id]'))blockIfNeeded(e);
+  },true);
+  document.addEventListener('submit',blockIfNeeded,true);
+  document.addEventListener('change',blockIfNeeded,true);
+  document.addEventListener('beforeinput',blockIfNeeded,true);
+  document.addEventListener('paste',blockIfNeeded,true);
+  document.addEventListener('drop',blockIfNeeded,true);
+
+  // Public helper for future controls/functions added to the project.
+  window.requireSyncedPartnerSession=()=>{
+    if(sessionReady())return true;
+    showSessionRequired();
+    return false;
+  };
 })();
