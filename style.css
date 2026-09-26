@@ -1401,3 +1401,268 @@ img,canvas,svg{max-width:100%}
 @media(max-width:900px){.purchase-for-field{grid-column:auto}}
 @media(max-width:620px){.purchase-for-field{grid-column:1/-1}}
 @media(max-width:420px){.purchase-for-field{grid-column:auto}}
+
+
+/* v62: cleaner purchases + full product image + fixed places layout */
+.purchase-grid{
+  grid-template-columns:repeat(auto-fit,minmax(420px,1fr))!important;
+  gap:16px!important;
+}
+.purchase-card{
+  grid-template-columns:240px minmax(0,1fr)!important;
+  min-height:320px!important;
+  border-radius:24px!important;
+  overflow:hidden!important;
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(255,92,155,.08), transparent 42%),
+    linear-gradient(145deg,#18141b,#100e13)!important;
+  box-shadow:0 18px 42px rgba(0,0,0,.18)!important;
+}
+.purchase-card:hover{transform:translateY(-1px)!important}
+.purchase-image{
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  min-height:100%!important;
+  height:100%!important;
+  padding:18px!important;
+  background:linear-gradient(180deg,#faf8fb,#efe7f3)!important;
+  border-right:1px solid rgba(255,255,255,.06)!important;
+}
+.purchase-image img{
+  position:static!important;
+  inset:auto!important;
+  width:100%!important;
+  height:100%!important;
+  max-height:none!important;
+  object-fit:contain!important;
+  object-position:center center!important;
+  border-radius:0!important;
+  background:transparent!important;
+}
+.purchase-image-placeholder{
+  display:grid!important;
+  place-items:center!important;
+  width:100%!important;
+  height:100%!important;
+  min-height:220px!important;
+  border-radius:18px!important;
+  background:rgba(255,255,255,.32)!important;
+  color:#6f5a75;
+}
+.purchase-card-body{
+  display:grid!important;
+  grid-template-columns:1fr!important;
+  gap:12px!important;
+  align-content:start!important;
+  padding:18px 18px 16px!important;
+}
+.purchase-card-top{
+  display:flex!important;
+  justify-content:space-between!important;
+  align-items:flex-start!important;
+  gap:10px!important;
+  flex-wrap:wrap!important;
+  min-height:0!important;
+}
+.purchase-card-badges{
+  display:flex!important;
+  gap:7px!important;
+  flex-wrap:wrap!important;
+  justify-content:flex-start!important;
+}
+.purchase-title-row{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:12px!important;
+  align-items:start!important;
+}
+.purchase-card h3{
+  margin:0!important;
+  font-size:18px!important;
+  line-height:1.28!important;
+}
+.purchase-owner-actions{
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:8px!important;
+  justify-content:end!important;
+  min-width:184px;
+}
+.purchase-edit-btn,
+.purchase-delete-btn{
+  min-height:40px!important;
+}
+.purchase-price-row{
+  margin:0!important;
+  flex-wrap:wrap!important;
+  gap:6px 10px!important;
+}
+.purchase-price-row strong{font-size:22px!important}
+.purchase-price-row b{color:#ffc98a!important}
+.purchase-link{
+  display:inline-flex!important;
+  align-items:center!important;
+  gap:6px!important;
+  width:max-content!important;
+  max-width:100%!important;
+  min-height:36px!important;
+  margin:0!important;
+  padding:0!important;
+  color:#ff9fbe!important;
+}
+.purchase-status-actions,
+.purchase-priority,
+.purchase-votes,
+.purchase-vote-actions{
+  margin:0!important;
+}
+.purchase-priority,
+.purchase-votes{
+  padding:12px!important;
+  border:1px solid rgba(255,255,255,.06)!important;
+  border-radius:16px!important;
+  background:rgba(255,255,255,.025)!important;
+}
+.purchase-votes{grid-template-columns:1fr 1fr!important;gap:9px!important}
+.purchase-vote-status{background:rgba(255,255,255,.028)!important}
+.purchase-status-actions,
+.purchase-vote-actions,
+.purchase-priority-actions{
+  display:grid!important;
+  gap:8px!important;
+}
+.purchase-status-actions{grid-template-columns:1fr 1fr!important}
+.purchase-priority-head{align-items:center!important}
+.purchase-priority-note{margin-top:2px}
+
+/* Places page: turn awkward rows into clean cards */
+.places-categories{
+  gap:20px!important;
+}
+.place-category{
+  border-top:1px solid rgba(255,255,255,.07)!important;
+  padding-top:18px!important;
+}
+.place-category h3{
+  margin:0 0 12px!important;
+  font-size:15px!important;
+}
+.place-grid{
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr))!important;
+  gap:12px!important;
+}
+.place-item-row{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:10px!important;
+  align-items:stretch!important;
+  min-height:88px!important;
+  padding:12px!important;
+  border:1px solid rgba(255,255,255,.07)!important;
+  border-radius:18px!important;
+  background:linear-gradient(145deg,#18141b,#111016)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 10px 24px rgba(0,0,0,.14)!important;
+}
+.place-item-row:has(.place-item.done){
+  border-color:rgba(105,211,145,.22)!important;
+  background:linear-gradient(145deg,rgba(84,170,118,.12),rgba(17,16,22,.95))!important;
+}
+.place-item-row:has(.place-item.planned:not(.done)),
+.place-item-row:has(.place-plan.active){
+  border-color:rgba(255,184,75,.18)!important;
+}
+.place-item{
+  min-height:0!important;
+  border:none!important;
+  background:transparent!important;
+  padding:0!important;
+  border-radius:0!important;
+  align-items:flex-start!important;
+  gap:10px!important;
+  font-size:15px!important;
+  line-height:1.35!important;
+}
+.place-item::before{
+  flex:0 0 auto;
+  margin-top:1px;
+}
+.place-plan{
+  align-self:flex-start!important;
+  margin-top:auto!important;
+}
+
+@media(max-width:980px){
+  .purchase-grid{grid-template-columns:1fr!important}
+}
+@media(max-width:760px){
+  .purchase-card{
+    grid-template-columns:1fr!important;
+    min-height:0!important;
+  }
+  .purchase-image{
+    min-height:260px!important;
+    height:260px!important;
+    border-right:none!important;
+    border-bottom:1px solid rgba(255,255,255,.06)!important;
+    padding:14px!important;
+  }
+  .purchase-image img{height:100%!important}
+  .purchase-card-body{padding:15px!important;gap:10px!important}
+  .purchase-title-row{
+    grid-template-columns:1fr!important;
+    gap:10px!important;
+  }
+  .purchase-owner-actions{
+    min-width:0;
+    width:100%;
+  }
+  .purchase-card h3{font-size:17px!important}
+  .purchase-status-actions{grid-template-columns:1fr 1fr!important}
+  .purchase-votes{grid-template-columns:1fr 1fr!important}
+  .place-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .place-item-row{min-height:82px!important;padding:11px!important}
+}
+@media(max-width:520px){
+  .purchase-image{
+    min-height:230px!important;
+    height:230px!important;
+    padding:12px!important;
+  }
+  .purchase-card-body{padding:13px!important}
+  .purchase-owner-actions,
+  .purchase-status-actions,
+  .purchase-vote-actions,
+  .purchase-priority-actions{
+    grid-template-columns:1fr 1fr!important;
+  }
+  .purchase-votes{grid-template-columns:1fr!important}
+  .place-grid{grid-template-columns:1fr!important}
+  .place-item-row{
+    min-height:72px!important;
+    padding:10px 11px!important;
+    border-radius:16px!important;
+  }
+  .place-item{font-size:14px!important}
+  .place-plan{
+    width:auto!important;
+    min-width:0!important;
+    height:auto!important;
+    min-height:28px!important;
+    font-size:10px!important;
+    padding:5px 8px!important;
+  }
+  .place-plan::before{content:'＋ '!important;font-size:11px!important}
+  .place-plan.active::before{content:'✓ '!important}
+}
+@media(max-width:400px){
+  .purchase-image{min-height:210px!important;height:210px!important}
+  .purchase-owner-actions,
+  .purchase-status-actions,
+  .purchase-vote-actions,
+  .purchase-priority-actions{grid-template-columns:1fr!important}
+}
+
+/* v63: recipient badge by actual pair player */
+.purchase-for-badge.player0{color:#ffadd0;background:rgba(255,88,151,.09);border-color:rgba(255,88,151,.16)}
+.purchase-for-badge.player1{color:#c8b8ff;background:rgba(135,111,255,.10);border-color:rgba(135,111,255,.18)}
