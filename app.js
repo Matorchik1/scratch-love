@@ -35,7 +35,7 @@ const PairDB = (() => {
   function setKV(key,value){if(!active)return;active.state.kv ||= {};active.state.kv[key]=value;scheduleSave()}
   function removeKV(key){if(!active?.state?.kv)return;delete active.state.kv[key];scheduleSave()}
   async function init(){await open();const id=await getMeta('activePairId');if(id)active=await req(tx(STORE).get(id));return active}
-  return {init,list,create,activate,remove,exportAll,importAll,applyRemote,get active(){return active},save:async()=>{if(active){await put(active);document.dispatchEvent(new CustomEvent('pair:state-saved',{detail:active}))}},getKV,setKV,removeKV};
+  return {init,list,create,activate,remove,exportAll,importAll,applyRemote,getMeta,setMeta,get active(){return active},save:async()=>{if(active){await put(active);document.dispatchEvent(new CustomEvent('pair:state-saved',{detail:active}))}},getKV,setKV,removeKV};
 })();
 
 const pairStorage={
@@ -557,7 +557,7 @@ const pairStorage={
   function showTab(which, syncSession=true){
     calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(progressSection)progressSection.hidden=which!=='progress';
     calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); progressTabBtn?.classList.toggle('active',which==='progress');
-    pairStorage.setItem('sa_main_tab_v1',which);
+    if(syncSession) pairStorage.setItem('sa_main_tab_v1',which);
     document.body.dataset.mainTab=which;
     if(which==='games'){
       const savedGame=pairStorage.getItem(ACTIVE_GAME_KEY);
@@ -599,7 +599,8 @@ const pairStorage={
     if(playersPanel) playersPanel.hidden=true;
     if(rouletteCustomPanel) rouletteCustomPanel.hidden=true;
     delete document.body.dataset.activeGame;
-    if(clearState) pairStorage.removeItem(ACTIVE_GAME_KEY);
+    document.body.dataset.gameMenu='1';
+    if(clearState && syncSession) pairStorage.removeItem(ACTIVE_GAME_KEY);
     if(syncSession) window.SessionSync?.sendUI?.('game-menu',{});
   }
   function openGame(key, syncSession=true){
@@ -615,7 +616,8 @@ const pairStorage={
     if(key==='direct') directBodySlot.reset();
     if(key==='randomPose') resetRandomPosePreview();
     document.body.dataset.activeGame=key;
-    pairStorage.setItem(ACTIVE_GAME_KEY,key);
+    delete document.body.dataset.gameMenu;
+    if(syncSession) pairStorage.setItem(ACTIVE_GAME_KEY,key);
     if(syncSession) window.SessionSync?.sendUI?.('game',{key});
   }
   $$('.game-launch-card').forEach(btn=>btn.addEventListener('click',()=>openGame(btn.dataset.game)));
@@ -978,7 +980,7 @@ const pairStorage={
   $('#directDoneBtn')?.addEventListener('click',()=>{resolveResult(true);if(dbox)dbox.hidden=true});
   $('#directNoBtn')?.addEventListener('click',()=>{resolveResult(false);if(dbox)dbox.hidden=true});
 
-  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const t=pairStorage.getItem('sa_main_tab_v1'); const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){const savedGame=pairStorage.getItem(ACTIVE_GAME_KEY); if(savedGame&&gameMeta[savedGame]) openGame(savedGame,false); else showTab('games',false);} else showTab(tab,false); }
+  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=(connected&&runtimeGame&&gameMeta[runtimeGame])?runtimeGame:storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
   document.addEventListener('session:remote-ui',e=>{
     const m=e.detail||{};
@@ -1084,95 +1086,168 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   document.addEventListener('pair:changed',()=>{renderSecret();renderBattle()});renderSecret();
 })();
 
-// --- P2P session sync v22: roles + shared UI ---
+// --- P2P session sync v24: stable UI + auto restore ---
 (() => {
+  'use strict';
   const $=s=>document.querySelector(s);
   let peer=null,conn=null,isApplying=false,lastSent='',localRole=null,remoteRole=null,isHost=false,uiApply=false,uiTimer=null;
+  let reconnectTimer=null, reconnectAttempts=0, restoring=false;
+  const SESSION_META='p2p_session_v2';
   const status=(t,ok=false)=>{const e=$('#sessionStatus');if(e){e.textContent=t;e.classList.toggle('connected',ok)}};
   const roleStatus=$('#sessionRoleStatus'), activeSessionRole=$('#activeSessionRole');
   function code(){return 'love-'+Math.random().toString(36).slice(2,8)}
   function roleLabel(role){const p=PairDB.active?.players?.[role];return p?.name?`${p.name} (Гравець ${role+1})`:`Гравець ${role+1}`}
   function updateRoleStatus(conflict=false){
     const connected=!!conn?.open;
-    const text=conflict?`Конфлікт ролей: обидва обрали ${roleLabel(localRole)}. Перепідключіться та оберіть різні ролі.`:`Ви: ${localRole===null?'роль не обрана':roleLabel(localRole)}${remoteRole===null?'':` · партнер: ${roleLabel(remoteRole)}`}`;
-    if(roleStatus){roleStatus.hidden=!connected;roleStatus.classList.toggle('conflict',conflict);if(connected)roleStatus.textContent=text}
-    if(activeSessionRole){activeSessionRole.hidden=!connected;activeSessionRole.classList.toggle('conflict',conflict);if(connected)activeSessionRole.textContent=text}
+    const selected=localRole===0||localRole===1;
+    const text=conflict?`Конфлікт ролей: обидва обрали ${roleLabel(localRole)}. Перепідключіться та оберіть різні ролі.`:`Ви: ${selected?roleLabel(localRole):'роль не обрана'}${remoteRole===0||remoteRole===1?` · партнер: ${roleLabel(remoteRole)}`:''}`;
+    if(roleStatus){roleStatus.hidden=!(connected||restoring);roleStatus.classList.toggle('conflict',conflict);if(connected||restoring)roleStatus.textContent=text}
+    if(activeSessionRole){activeSessionRole.hidden=!(connected||restoring);activeSessionRole.classList.toggle('conflict',conflict);if(connected||restoring)activeSessionRole.textContent=text}
   }
   function send(msg){if(conn?.open)try{conn.send(msg)}catch(e){console.warn('session send',e)}}
   function sendPair(pair){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap)})}
-  function sendUI(kind,payload={}){if(!conn?.open||uiApply)return;send({type:'ui',kind,payload})}
+  function sendUI(kind,payload={}){if(!conn?.open||uiApply)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now()})}
+  async function saveSessionMeta(mode,sessionCode){
+    try{await PairDB.setMeta(SESSION_META,{mode,code:sessionCode,role:localRole,pairId:PairDB.active?.id||null,updatedAt:Date.now()})}catch(e){console.warn('session meta save',e)}
+  }
+  async function clearSessionMeta(){try{await PairDB.setMeta(SESSION_META,null)}catch{}}
 
   const mirrorIds=['passionResultBox','passionTurnLabel','passionResult','directResultBox','directTurnLabel','directResult','randomPoseResultBox','randomPoseResultIndex','randomPoseResult','randomPoseDescription','randomPoseNumber','randomPoseCaption','scenarioResult','fiveTimer','fiveMode','fiveRating','fiveRatingHistory','secretWishResult','secretWishP1Count','secretWishP2Count','blindResult','battleCounts','battleWinners','questSteps','fortuneLevelSummary'];
   const slotSelectors=['#passionActionSlot .slot-track','#passionBodySlot .slot-track','#directBodySlot .slot-track','#scenarioMainReel .slot-track','#scenarioSecondReel .slot-track'];
   function captureUI(){
     const fields={};
     mirrorIds.forEach(id=>{const el=document.getElementById(id);if(!el)return;fields[id]={hidden:!!el.hidden,html:el.innerHTML,text:el.textContent}});
-    const preview=$('#randomPosePreview'); if(preview)fields.randomPosePreview={src:preview.getAttribute('src'),alt:preview.getAttribute('alt')};
+    const preview=$('#randomPosePreview');if(preview)fields.randomPosePreview={src:preview.getAttribute('src'),alt:preview.getAttribute('alt')};
     const rotor=$('#fortuneWheelRotor');if(rotor)fields.fortuneWheelRotor={transform:rotor.style.transform,transition:rotor.style.transition};
     const activeDirect=$('#directActionChoice .choice-btn.active');
     const activeScenario=$('#scenarioSecondType [data-mode].active');
     const slots=slotSelectors.map(sel=>document.querySelector(sel)?.innerHTML||'');
     const pd=$('#positionDialog');
     const position=pd?{open:pd.open,category:$('#positionCategoryTitle')?.textContent||'',title:$('#positionDayTitle')?.textContent||'',src:$('#calendarPositionImage')?.getAttribute('src')||'',instruction:$('#positionInstruction')?.textContent||'',metaHidden:$('#positionMeta')?.hidden??true,name:$('#positionPoseName')?.textContent||'',description:$('#positionPoseDescription')?.textContent||''}:null;
-    return {fields,slots,directAction:activeDirect?.dataset.action||null,scenarioMode:activeScenario?.dataset.mode||null,position};
+    return {fields,slots,directAction:activeDirect?.dataset.action||null,scenarioMode:activeScenario?.dataset.mode||null,position,mainTab:document.body.dataset.mainTab||null,activeGame:document.body.dataset.activeGame||null,gameMenu:document.body.dataset.gameMenu==='1'};
   }
   function applyUI(snap){
     if(!snap)return;uiApply=true;
     try{
+      // Apply navigation first, so snapshot content lands in the visible game instead of the menu.
+      if(snap.mainTab){
+        document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'tab',payload:{which:snap.mainTab},fromSnapshot:true}}));
+        if(snap.mainTab==='games'){
+          if(snap.gameMenu)document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game-menu',payload:{},fromSnapshot:true}}));
+          else if(snap.activeGame)document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game',payload:{key:snap.activeGame},fromSnapshot:true}}));
+        }
+      }
       Object.entries(snap.fields||{}).forEach(([id,v])=>{const el=document.getElementById(id);if(!el)return;if('hidden'in v)el.hidden=!!v.hidden;if(v.src&&el.tagName==='IMG'){el.src=v.src;if(v.alt)el.alt=v.alt}else if(typeof v.html==='string')el.innerHTML=v.html;if(v.transform&&id==='fortuneWheelRotor'){el.style.transform=v.transform;el.style.transition=v.transition||''}});
       if(snap.fields?.fortuneWheelRotor){const r=$('#fortuneWheelRotor');if(r){r.style.transform=snap.fields.fortuneWheelRotor.transform||'';r.style.transition=snap.fields.fortuneWheelRotor.transition||''}}
       (snap.slots||[]).forEach((html,i)=>{const track=document.querySelector(slotSelectors[i]);if(track&&html)track.innerHTML=html});
-      if(snap.directAction){document.querySelectorAll('#directActionChoice .choice-btn').forEach(b=>b.classList.toggle('active',b.dataset.action===snap.directAction))}
-      if(snap.scenarioMode){document.querySelectorAll('#scenarioSecondType [data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===snap.scenarioMode))}
+      if(snap.directAction)document.querySelectorAll('#directActionChoice .choice-btn').forEach(b=>b.classList.toggle('active',b.dataset.action===snap.directAction));
+      if(snap.scenarioMode)document.querySelectorAll('#scenarioSecondType [data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===snap.scenarioMode));
       if(snap.position){const p=snap.position,dlg=$('#positionDialog');if(dlg){if($('#positionCategoryTitle'))$('#positionCategoryTitle').textContent=p.category;if($('#positionDayTitle'))$('#positionDayTitle').textContent=p.title;if($('#calendarPositionImage')&&p.src)$('#calendarPositionImage').src=p.src;if($('#positionInstruction'))$('#positionInstruction').textContent=p.instruction;if($('#positionMeta'))$('#positionMeta').hidden=p.metaHidden;if($('#positionPoseName'))$('#positionPoseName').textContent=p.name;if($('#positionPoseDescription'))$('#positionPoseDescription').textContent=p.description;if(p.open&&!dlg.open)try{dlg.showModal()}catch{};if(!p.open&&dlg.open)dlg.close()}}
-      const flash=$('#gameDetail:not([hidden]), #calendarSection:not([hidden]), #placesSection:not([hidden]), #progressSection:not([hidden])');if(flash){flash.classList.remove('session-remote-flash');void flash.offsetWidth;flash.classList.add('session-remote-flash')}
-    }finally{setTimeout(()=>uiApply=false,80)}
+    }finally{setTimeout(()=>uiApply=false,100)}
   }
-  function scheduleUISnapshot(delay=120){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{if(conn?.open&&!uiApply)send({type:'ui-snapshot',snapshot:captureUI()})},delay)}
+  function scheduleUISnapshot(delay=140){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{if(conn?.open&&!uiApply)send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now()})},delay)}
   window.SessionSync={sendUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open}};
 
-  function wire(c,hostSide){
+  function clearReconnect(){clearTimeout(reconnectTimer);reconnectTimer=null;reconnectAttempts=0}
+  function scheduleGuestReconnect(sessionCode){
+    clearTimeout(reconnectTimer);
+    reconnectTimer=setTimeout(()=>{
+      if(conn?.open||!peer||peer.destroyed)return;
+      reconnectAttempts++;
+      status(`Відновлюємо сесію… спроба ${reconnectAttempts}`);
+      try{wire(peer.connect(sessionCode,{reliable:true}),false,sessionCode,true)}catch{}
+    },Math.min(5000,1000+reconnectAttempts*700));
+  }
+  function wire(c,hostSide,sessionCode,restored=false){
+    if(conn&&conn!==c){try{conn.close()}catch{}}
     conn=c;isHost=hostSide;$('#leaveSessionBtn').hidden=false;
-    c.on('open',()=>{
-      status('Підключено · синхронізація активна',true);updateRoleStatus(false);
+    c.on('open',async()=>{
+      clearReconnect();restoring=false;
+      status(restored?'Сесію відновлено · синхронізація активна':'Підключено · синхронізація активна',true);updateRoleStatus(false);
+      await saveSessionMeta(hostSide?'host':'guest',sessionCode);
       send({type:'hello',role:localRole,players:PairDB.active?.players||null});
       if(isHost&&PairDB.active)sendPair(PairDB.active);
       sendUI('tab',{which:document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1')||'calendar'});
-      if(document.body.dataset.activeGame)sendUI('game',{key:document.body.dataset.activeGame});
-      scheduleUISnapshot(250);
+      const activeGame=document.body.dataset.activeGame||pairStorage.getItem('sa_active_game_v2');
+      if(activeGame)sendUI('game',{key:activeGame}); else if((document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1'))==='games')sendUI('game-menu',{});
+      scheduleUISnapshot(300);
     });
     c.on('data',async msg=>{
+      // Ignore reflected UI messages from our own Peer id.
+      if(msg?.origin&&peer?.id&&msg.origin===peer.id)return;
       if(msg?.type==='hello'){
         remoteRole=Number(msg.role);const conflict=remoteRole===localRole;updateRoleStatus(conflict);status(conflict?'Підключено, але є конфлікт ролей':'Підключено · синхронізація активна',!conflict);return;
       }
-      if(msg?.type==='pair'&&msg.pair){isApplying=true;try{lastSent=JSON.stringify(msg.pair);await PairDB.applyRemote(msg.pair);const g=$('#pairGate'),sh=$('#appShell'),lab=$('#activePairLabel');if(g)g.hidden=true;if(sh)sh.hidden=false;if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');updateRoleStatus(remoteRole===localRole);status(remoteRole===localRole?'Синхронізовано · конфлікт ролей':'Синхронізовано',remoteRole!==localRole)}finally{setTimeout(()=>isApplying=false,180)}return}
-      if(msg?.type==='ui'){uiApply=true;try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}finally{setTimeout(()=>uiApply=false,80)}return}
+      if(msg?.type==='pair'&&msg.pair){isApplying=true;try{lastSent=JSON.stringify(msg.pair);await PairDB.applyRemote(msg.pair);const g=$('#pairGate'),sh=$('#appShell'),lab=$('#activePairLabel');if(g)g.hidden=true;if(sh)sh.hidden=false;if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');updateRoleStatus(remoteRole===localRole);status(remoteRole===localRole?'Синхронізовано · конфлікт ролей':'Синхронізовано',remoteRole!==localRole)}finally{setTimeout(()=>isApplying=false,220)}return}
+      if(msg?.type==='ui'){uiApply=true;try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}finally{setTimeout(()=>uiApply=false,100)}return}
       if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot);return}
     });
-    c.on('close',()=>{status('Сесію завершено');conn=null;remoteRole=null;$('#leaveSessionBtn').hidden=true;updateRoleStatus(false)});
-    c.on('error',e=>status('Помилка з’єднання: '+e.type));
+    c.on('close',()=>{
+      conn=null;remoteRole=null;updateRoleStatus(false);
+      if(!isHost&&sessionCode){restoring=true;status('Зв’язок втрачено · очікуємо хоста…');updateRoleStatus(false);scheduleGuestReconnect(sessionCode)}
+      else status('Партнер відключився · сесія очікує повторного підключення');
+    });
+    c.on('error',e=>{status('Помилка з’єднання: '+e.type);if(!hostSide&&sessionCode)scheduleGuestReconnect(sessionCode)});
+  }
+  function createHost(sessionCode,role,restored=false,attempt=0){
+    if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}
+    localRole=Number(role);isHost=true;restoring=restored;updateRoleStatus(false);
+    try{peer?.destroy()}catch{}
+    peer=new Peer(sessionCode);
+    status(restored?`Відновлюємо сесію як ${roleLabel(localRole)}…`:`Створюємо сесію як ${roleLabel(localRole)}…`);
+    peer.on('open',async pid=>{$('#sessionCode').textContent=pid;$('#sessionCodeBox').hidden=false;$('#leaveSessionBtn').hidden=false;await saveSessionMeta('host',pid);status(`${restored?'Сесію відновлено':'Очікуємо партнера'} · ви ${roleLabel(localRole)}`)});
+    peer.on('connection',c=>wire(c,true,sessionCode,restored));
+    peer.on('error',e=>{
+      if(restored&&e.type==='unavailable-id'&&attempt<8){status('Чекаємо звільнення коду сесії…');setTimeout(()=>createHost(sessionCode,role,true,attempt+1),1000+attempt*350)}
+      else status('Помилка: '+e.type)
+    });
+  }
+  function createGuest(sessionCode,role,restored=false){
+    if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}
+    localRole=Number(role);isHost=false;restoring=restored;updateRoleStatus(false);
+    try{peer?.destroy()}catch{}
+    peer=new Peer();status(restored?`Відновлюємо підключення як ${roleLabel(localRole)}…`:`Підключення як ${roleLabel(localRole)}…`);
+    peer.on('open',async()=>{await saveSessionMeta('guest',sessionCode);wire(peer.connect(sessionCode,{reliable:true}),false,sessionCode,restored)});
+    peer.on('error',e=>{status('Помилка: '+e.type);if(restored)scheduleGuestReconnect(sessionCode)});
   }
   $('#createSessionBtn')?.addEventListener('click',()=>{
-    if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}
     const roleValue=$('#createSessionRole')?.value;
     if(roleValue!=='0'&&roleValue!=='1'){status('Спочатку оберіть, за кого ви граєте.');$('#createSessionRole')?.focus();return}
-    localRole=Number(roleValue); peer?.destroy(); const id=code(); peer=new Peer(id);
-    status(`Створюємо сесію як ${roleLabel(localRole)}…`);
-    peer.on('open',pid=>{$('#sessionCode').textContent=pid;$('#sessionCodeBox').hidden=false;status(`Очікуємо партнера · ви ${roleLabel(localRole)}`)});
-    peer.on('connection',c=>wire(c,true));peer.on('error',e=>status('Помилка: '+e.type));
+    createHost(code(),Number(roleValue),false,0);
   });
   $('#joinSessionBtn')?.addEventListener('click',()=>{
-    const id=$('#joinSessionCode')?.value.trim();if(!id){status('Введіть код сесії.');return}if(typeof Peer==='undefined'){status('Не вдалося завантажити P2P-модуль. Перевірте інтернет.');return}
+    const id=$('#joinSessionCode')?.value.trim();if(!id){status('Введіть код сесії.');return}
     const roleValue=$('#joinSessionRole')?.value;
     if(roleValue!=='0'&&roleValue!=='1'){status('Спочатку оберіть, за кого ви граєте.');$('#joinSessionRole')?.focus();return}
-    localRole=Number(roleValue); peer?.destroy(); peer=new Peer(); status(`Підключення як ${roleLabel(localRole)}…`);
-    peer.on('open',()=>wire(peer.connect(id,{reliable:true}),false));peer.on('error',e=>status('Помилка: '+e.type));
+    createGuest(id,Number(roleValue),false);
   });
   $('#copySessionCodeBtn')?.addEventListener('click',async()=>{const t=$('#sessionCode')?.textContent;if(t&&t!=='—'){try{await navigator.clipboard.writeText(t);status('Код скопійовано')}catch{status('Скопіюйте код вручну: '+t)}}});
-  $('#leaveSessionBtn')?.addEventListener('click',()=>{try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;remoteRole=null;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено');localRole=null;updateRoleStatus(false)});
-  document.addEventListener('pair:state-saved',e=>{sendPair(e.detail);scheduleUISnapshot(120)});document.addEventListener('pair:profile',()=>sendPair(PairDB.active));
-  document.addEventListener('click',e=>{if(!conn?.open||uiApply)return;const interactive=e.target.closest('button,[data-game],.calendar-day,.place-item,input[type=checkbox],select');if(!interactive)return;scheduleUISnapshot(180);scheduleUISnapshot(3600)});
-  document.addEventListener('change',()=>scheduleUISnapshot(120));
-  setInterval(()=>{if(conn?.open&&!uiApply)scheduleUISnapshot(20)},1000);
-})();
+  $('#leaveSessionBtn')?.addEventListener('click',async()=>{clearReconnect();try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;remoteRole=null;restoring=false;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено');localRole=null;updateRoleStatus(false);await clearSessionMeta()});
+  document.addEventListener('pair:state-saved',e=>{sendPair(e.detail);scheduleUISnapshot(150)});
+  document.addEventListener('pair:profile',()=>sendPair(PairDB.active));
+  document.addEventListener('click',e=>{if(!conn?.open||uiApply)return;const interactive=e.target.closest('button,[data-game],.calendar-day,.place-item,input[type=checkbox],select');if(!interactive)return;scheduleUISnapshot(220)});
+  document.addEventListener('change',()=>scheduleUISnapshot(160));
+  // No periodic UI snapshots: they caused visible flashing and could re-apply stale navigation.
 
+  async function autoRestore(){
+    for(let i=0;i<20;i++){
+      try{
+        if(!PairDB.active){await new Promise(r=>setTimeout(r,200));continue}
+        const saved=await PairDB.getMeta(SESSION_META);
+        if(!saved||!saved.code||(saved.role!==0&&saved.role!==1))return;
+        localRole=Number(saved.role);restoring=true;
+        if($('#createSessionRole'))$('#createSessionRole').value=String(localRole);
+        if($('#joinSessionRole'))$('#joinSessionRole').value=String(localRole);
+        if(saved.mode==='host'){
+          $('#sessionCode').textContent=saved.code;$('#sessionCodeBox').hidden=false;
+          createHost(saved.code,localRole,true,0);
+        }else if(saved.mode==='guest'){
+          if($('#joinSessionCode'))$('#joinSessionCode').value=saved.code;
+          createGuest(saved.code,localRole,true);
+        }
+        return;
+      }catch(e){await new Promise(r=>setTimeout(r,250))}
+    }
+  }
+  setTimeout(autoRestore,350);
+})();
