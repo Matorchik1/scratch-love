@@ -1,4 +1,4 @@
-// ===== v32: pair profiles + stable realtime game sync =====
+// ===== v33: pair profiles + deterministic realtime game sync =====
 const PairDB = (() => {
   const DB='scratch_love_db_v1', STORE='pairs', META='meta';
   let db=null, active=null, saveTimer=null;
@@ -493,6 +493,7 @@ const pairStorage={
         GENDERS_KEY='sa_games_player_genders_v1',
         SCORE_KEY='sa_games_score_v1',
         TURN_KEY='sa_games_turn_v1',
+        PENDING_GAME_KEY='sa_games_pending_result_v1',
         PLACES_KEY='sa_games_places_v2',
         CUSTOM_ACTIONS_KEY='sa_games_custom_actions_v1',
         CUSTOM_BODY_KEY='sa_games_custom_body_v1',
@@ -871,6 +872,7 @@ const pairStorage={
     {id:'acro',name:'Акробатичний',from:295,to:312}
   ];
   const RANDOM_LEVELS_KEY='sa_random_pose_levels_v1';
+  const RANDOM_LAST_KEY='sa_random_pose_last_v1';
   const fortuneWheel=$('#fortuneWheel'), fortuneWheelRotor=$('#fortuneWheelRotor'), randomPosePreview=$('#randomPosePreview'), randomPoseNumber=$('#randomPoseNumber'), randomPoseCaption=$('#randomPoseCaption'), randomPoseResultBox=$('#randomPoseResultBox'), randomPoseResultIndex=$('#randomPoseResultIndex'), randomPoseResult=$('#randomPoseResult'), randomPoseDescription=$('#randomPoseDescription');
   const fortuneLevelOptions=$('#fortuneLevelOptions'), fortuneLevelSummary=$('#fortuneLevelSummary');
   let randomPoseCurrent=RANDOM_POSITIONS[0]||null, randomPoseBusy=false, fortuneTurns=0;
@@ -938,13 +940,21 @@ const pairStorage={
     if(randomPoseNumber) randomPoseNumber.textContent=`Поза ${item.order_index}`;
     if(randomPoseCaption) randomPoseCaption.textContent=item.poseTitle || ('Поза ' + item.order_index);
   }
-  function resetRandomPosePreview(){ const pool=getRandomPosePool(); if(randomPoseResultBox)randomPoseResultBox.hidden=true; setRandomPose(pool.includes(randomPoseCurrent)?randomPoseCurrent:(pool[0]||RANDOM_POSITIONS[0])); }
+  function resetRandomPosePreview(){
+    const pool=getRandomPosePool();
+    const lastOrder=Number(pairStorage.getItem(RANDOM_LAST_KEY)||0);
+    const last=RANDOM_POSITIONS.find(x=>Number(x.order_index)===lastOrder);
+    if(last){applyRandomPoseResult(last);return;}
+    if(randomPoseResultBox)randomPoseResultBox.hidden=true;
+    setRandomPose(pool.includes(randomPoseCurrent)?randomPoseCurrent:(pool[0]||RANDOM_POSITIONS[0]));
+  }
   let lastRandomPoseResult=randomPoseCurrent;
   const waitUntil=async ts=>{const ms=Number(ts||0)-Date.now();if(ms>2)await new Promise(r=>setTimeout(r,ms));};
   function setRandomSpinButtonBusy(busy){const button=$('#randomPoseSpinBtn');if(button)button.disabled=!!busy;}
   function applyRandomPoseResult(item){
     if(!item)return;
     lastRandomPoseResult=item;
+    pairStorage.setItem(RANDOM_LAST_KEY,String(item.order_index));
     setRandomPose(item);
     if(randomPoseResultIndex)randomPoseResultIndex.textContent=`Поза ${item.order_index}`;
     if(randomPoseResult)randomPoseResult.textContent=item.poseTitle||(`Поза ${item.order_index}`);
@@ -970,7 +980,7 @@ const pairStorage={
     const frames=buildSpinFrames(pool,target,18);
     const button=$('#randomPoseSpinBtn');randomPoseBusy=true;if(button)button.disabled=true;if(randomPoseResultBox)randomPoseResultBox.hidden=true;
     try{
-      await preloadSpinFrames(frames);
+      preloadSpinFrames(frames).catch(()=>{});
       if(startAt)await waitUntil(startAt);
       const turn=Number.isFinite(Number(forcedTurn))?Number(forcedTurn):(5+Math.floor(Math.random()*3));
       fortuneTurns+=turn;
@@ -1003,18 +1013,25 @@ const pairStorage={
   });
   renderRandomLevelFilter();
 
-  function showResult(gameKey,resultText,turnLabelEl,resultEl,box){
-    const names=getNames(),turn=getTurn(),target=(turn+1)%2;
-    pendingGame={gameKey,turn};
+  function showResult(gameKey,resultText,turnLabelEl,resultEl,box,forcedTurn=null){
+    const turn=(forcedTurn===0||forcedTurn===1)?forcedTurn:getTurn(),target=(turn+1)%2;
+    pendingGame={gameKey,turn,resultText};
+    pairStorage.setItem(PENDING_GAME_KEY,JSON.stringify(pendingGame));
     if(turnLabelEl) turnLabelEl.textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;
     if(resultEl) resultEl.textContent=resultText;
     if(box) box.hidden=false;
   }
-  function resolveResult(completed){
-    if(!pendingGame)return;
-    const score=getScore();
-    if(completed){score[pendingGame.turn]+=1;setScore(score)}
-    setTurn((pendingGame.turn+1)%2); pendingGame=null; syncPlayers();
+  function resolveResult(completed,syncSession=true,forced=null){
+    if(!pendingGame){try{pendingGame=JSON.parse(pairStorage.getItem(PENDING_GAME_KEY)||'null')}catch{pendingGame=null}}
+    const pg=forced||pendingGame;
+    if(!pg)return;
+    let score=getScore();
+    if(forced?.score){score=[Number(forced.score[0])||0,Number(forced.score[1])||0]}
+    else if(completed){score[pg.turn]=(score[pg.turn]||0)+1;}
+    const nextTurn=forced?.nextTurn!=null?Number(forced.nextTurn)%2:(Number(pg.turn)+1)%2;
+    setScore(score);setTurn(nextTurn);pendingGame=null;pairStorage.removeItem(PENDING_GAME_KEY);syncPlayers();
+    const box=pg.gameKey==='passion'?pbox:pg.gameKey==='direct'?dbox:null;if(box)box.hidden=true;
+    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-resolve',gameKey:pg.gameKey,completed:!!completed,turn:pg.turn,score,nextTurn});
   }
 
   const pbox=$('#passionResultBox');
@@ -1024,18 +1041,21 @@ const pairStorage={
     try{
       const action=forced?.action || actionPool()[Math.floor(Math.random()*actionPool().length)];
       const bp=bodyPoolForTarget(); const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
-      if(!remote) window.SessionSync?.sendUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body});
+      const turn=(forced?.turn===0||forced?.turn===1)?forced.turn:getTurn();
+      const startAt=forced?.startAt || (window.SessionSync?.connected?Date.now()+500:null);
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,startAt});
+      if(startAt)await waitUntil(startAt);
       const [a,b]=await Promise.all([passionActionSlot.spinTo(action),passionBodySlot.spinTo(body)]);
-      showResult('passion',`${a} — ${b}`,$('#passionTurnLabel'),$('#passionResult'),pbox);
+      showResult('passion',`${a} — ${b}`,$('#passionTurnLabel'),$('#passionResult'),pbox,turn);
     }catch(err){console.error(err)}finally{rolling=false;if(button)button.disabled=false}
   }
   $('#passionRollBtn')?.addEventListener('click',()=>runPassionRoll());
-  $('#passionDoneBtn')?.addEventListener('click',()=>{resolveResult(true);if(pbox)pbox.hidden=true});
-  $('#passionNoBtn')?.addEventListener('click',()=>{resolveResult(false);if(pbox)pbox.hidden=true});
+  $('#passionDoneBtn')?.addEventListener('click',()=>resolveResult(true));
+  $('#passionNoBtn')?.addEventListener('click',()=>resolveResult(false));
 
   $$('#directActionChoice .choice-btn').forEach(btn=>btn.addEventListener('click',()=>{
     $$('#directActionChoice .choice-btn').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); directAction=btn.dataset.action;
-    window.SessionSync?.sendUI?.('game-action',{action:'direct-choice',directAction});
+    window.SessionSync?.replyUI?.('game-action',{action:'direct-choice',directAction});
   }));
   const dbox=$('#directResultBox');
   async function runDirectRoll(forced=null,remote=false){
@@ -1044,15 +1064,19 @@ const pairStorage={
       if(forced?.directAction) directAction=forced.directAction;
       document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));
       const bp=bodyPoolForTarget();const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
-      if(!remote)window.SessionSync?.sendUI?.('game-action',{action:'direct-roll',directAction,body});
-      const b=await directBodySlot.spinTo(body);showResult('direct',`${directAction} — ${b}`,$('#directTurnLabel'),$('#directResult'),dbox);
+      const turn=(forced?.turn===0||forced?.turn===1)?forced.turn:getTurn();
+      const startAt=forced?.startAt || (window.SessionSync?.connected?Date.now()+500:null);
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'direct-roll',directAction,body,turn,startAt});
+      if(startAt)await waitUntil(startAt);
+      const b=await directBodySlot.spinTo(body);showResult('direct',`${directAction} — ${b}`,$('#directTurnLabel'),$('#directResult'),dbox,turn);
     }catch(err){console.error(err)}finally{rolling=false;if(button)button.disabled=false}
   }
   $('#directRollBtn')?.addEventListener('click',()=>runDirectRoll());
-  $('#directDoneBtn')?.addEventListener('click',()=>{resolveResult(true);if(dbox)dbox.hidden=true});
-  $('#directNoBtn')?.addEventListener('click',()=>{resolveResult(false);if(dbox)dbox.hidden=true});
+  $('#directDoneBtn')?.addEventListener('click',()=>resolveResult(true));
+  $('#directNoBtn')?.addEventListener('click',()=>resolveResult(false));
 
-  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
+  function refreshPendingResult(){try{pendingGame=JSON.parse(pairStorage.getItem(PENDING_GAME_KEY)||'null')}catch{pendingGame=null}if(!pendingGame)return;if(pendingGame.gameKey==='passion'&&pbox)showResult('passion',pendingGame.resultText||'—',$('#passionTurnLabel'),$('#passionResult'),pbox,pendingGame.turn);if(pendingGame.gameKey==='direct'&&dbox)showResult('direct',pendingGame.resultText||'—',$('#directTurnLabel'),$('#directResult'),dbox,pendingGame.turn)}
+  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); refreshPendingResult(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
   document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose')renderRandomLevelFilter();});
   
@@ -1063,9 +1087,10 @@ const pairStorage={
     if(m.kind==='game-menu') showGamesMenu(false,true);
     if(m.kind==='game-action'){
       const a=m.payload?.action;
-      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue},true);}
+      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,startAt:m.payload.startAt},true);}
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
-      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body},true);}
+      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,startAt:m.payload.startAt},true);}
+      if(a==='score-resolve'){resolveResult(!!m.payload.completed,false,{gameKey:m.payload.gameKey,turn:m.payload.turn,score:m.payload.score,nextTurn:m.payload.nextTurn});}
       if(a==='random-pose-levels'){
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
         if(document.body.dataset.activeGame==='randomPose')renderRandomLevelFilter();
@@ -1144,57 +1169,79 @@ const pairStorage={
 // v20 unified progress refresh
 document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new CustomEvent('progress:changed')); }catch(e){} });
 
-// --- Extra couple games v21 ---
+// --- Extra couple games v33: synchronized actions ---
 (() => {
   'use strict';
   const $=s=>document.querySelector(s); const parse=(k,f)=>{try{return JSON.parse(pairStorage.getItem(k)||JSON.stringify(f))}catch{return f}}; const save=(k,v)=>pairStorage.setItem(k,JSON.stringify(v));
   const names=()=>{try{return JSON.parse(pairStorage.getItem('sa_games_player_names_v1')||'[]')}catch{return []}};
-  function extraGameViewRole(){
-    const sessionRole=window.SessionSync?.role;
-    if(sessionRole===0||sessionRole===1)return Number(sessionRole);
-    const saved=Number(pairStorage.getItem('sa_local_view_role_v1'));
-    return saved===1?1:0;
-  }
-  function extraParticipantLabel(index,withName=true){
-    const n=names(), self=extraGameViewRole();
-    const prefix=index===self?'Ви':'Ваш партнер';
-    return withName?`${prefix} — ${n[index]||('Гравець '+(index+1))}`:prefix;
-  }
-  const SECRET='sa_secret_wishes_v1', BATTLE='sa_battle_wishes_v1', BWIN='sa_battle_winners_v1', RATINGS='sa_five_ratings_v1';
+  function extraGameViewRole(){const r=window.SessionSync?.role;if(r===0||r===1)return Number(r);return Number(pairStorage.getItem('sa_local_view_role_v1'))===1?1:0}
+  function extraParticipantLabel(index,withName=true){const n=names(),self=extraGameViewRole(),prefix=index===self?'Ви':'Ваш партнер';return withName?`${prefix} — ${n[index]||('Гравець '+(index+1))}`:prefix}
+  const SECRET='sa_secret_wishes_v1',BATTLE='sa_battle_wishes_v1',BWIN='sa_battle_winners_v1',RATINGS='sa_five_ratings_v1';
   const poses=()=>Array.isArray(window.POSITION_ITEMS)?window.POSITION_ITEMS.filter(x=>x.audience==='mf'):[];
   const allPlaces=()=>document.querySelectorAll('.place-chip').length?[...document.querySelectorAll('.place-chip')].map(x=>x.textContent.replace(/×$/,'').trim()).filter(Boolean):['У машині','У ванній','На дивані','У готельному номері','На природі'];
   const actions=['Поцілунок','Дотик','Масаж','Стиснути','Облизати','Смоктати','Шльопання'];
   const bodies=['Рука','Сідниці','Спина','Живіт','Щоки','Груди','Пах','Вухо','Стопи','Палець','Коліна','Нога','Губи','Пупок','Шия','Соски','Промежина','Стегно','Пальці ніг'];
+  const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const send=(action,payload={})=>window.SessionSync?.connected&&window.SessionSync.replyUI?.('game-action',{action,...payload});
+  const wait=async ts=>{const ms=Number(ts||0)-Date.now();if(ms>1)await new Promise(r=>setTimeout(r,ms))};
+
   function addSecret(player,input){const val=$(input)?.value.trim();if(!val)return;const d=parse(SECRET,[[],[]]);d[player]||=[];d[player].push(val);save(SECRET,d);$(input).value='';renderSecret()}
-  function renderSecret(){const d=parse(SECRET,[[],[]]); if($('#secretWishP1Title'))$('#secretWishP1Title').textContent=extraParticipantLabel(0,true);if($('#secretWishP2Title'))$('#secretWishP2Title').textContent=extraParticipantLabel(1,true);if($('#secretWishP1Count'))$('#secretWishP1Count').textContent=`Збережено таємно: ${(d[0]||[]).length}`;if($('#secretWishP2Count'))$('#secretWishP2Count').textContent=`Збережено таємно: ${(d[1]||[]).length}`}
+  function renderSecret(){const d=parse(SECRET,[[],[]]);if($('#secretWishP1Title'))$('#secretWishP1Title').textContent=extraParticipantLabel(0,true);if($('#secretWishP2Title'))$('#secretWishP2Title').textContent=extraParticipantLabel(1,true);if($('#secretWishP1Count'))$('#secretWishP1Count').textContent=`Збережено таємно: ${(d[0]||[]).length}`;if($('#secretWishP2Count'))$('#secretWishP2Count').textContent=`Збережено таємно: ${(d[1]||[]).length}`}
   $('#secretWishP1Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(0,'#secretWishP1Input')});$('#secretWishP2Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(1,'#secretWishP2Input')});
-  $('#revealSecretWishBtn')?.addEventListener('click',()=>{const d=parse(SECRET,[[],[]]), pool=[...(d[0]||[]).map(x=>({p:0,x})),...(d[1]||[]).map(x=>({p:1,x}))],box=$('#secretWishResult'),n=names();if(!pool.length){box.hidden=false;box.innerHTML='<strong>Спочатку додайте хоча б одне бажання.</strong>';return}const r=pool[Math.floor(Math.random()*pool.length)];box.hidden=false;box.innerHTML=`<small>Бажання від: ${extraParticipantLabel(r.p,true)}</small><strong>${escapeHtml(r.x)}</strong>`});
-  function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-  // scenario reels
-  const scenarios=['Романтика','Швидко','Повільно','Без слів','Із зав’язаними очима','У новому місці','Тільки поцілунки']; const durations=['2 хв','5 хв','10 хв','15 хв','20 хв']; let scenMode='duration';
-  function simpleReel(el,items){if(!el)return;const track=el.querySelector('.slot-track');let idx=Math.floor(Math.random()*items.length);function draw(){track.innerHTML=[-1,0,1].map(o=>`<div class="slot-item ${o===0?'active':''}">${escapeHtml(items[(idx+o+items.length)%items.length])}</div>`).join('')}draw();return {setItems(a){items=a;idx%=Math.max(a.length,1);draw()},spinTo(value=null){return new Promise(res=>{const target=value==null?Math.floor(Math.random()*items.length):Math.max(0,items.indexOf(value));let steps=18+Math.floor(Math.random()*10),i=0;const t=setInterval(()=>{idx=(idx+1)%items.length;draw();if(++i>=steps){clearInterval(t);idx=target;draw();res(items[idx])}},70+i*3)})},spin(){return this.spinTo(null)}}}
-  const scenReel=simpleReel($('#scenarioMainReel'),scenarios), secondReel=simpleReel($('#scenarioSecondReel'),durations);
-  $('#scenarioSecondType')?.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(!b)return;scenMode=b.dataset.mode;$('#scenarioSecondType').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));const arr=scenMode==='duration'?durations:allPlaces();secondReel?.setItems(arr.length?arr:['Ваше місце']);$('#scenarioSecondLabel').textContent=scenMode==='duration'?'Тривалість':'Місце'});
-  async function runScenarioRoll(forced=null,remote=false){const secondItems=scenMode==='duration'?durations:allPlaces();if(forced?.mode){scenMode=forced.mode;document.querySelectorAll('#scenarioSecondType [data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===scenMode));secondReel?.setItems(scenMode==='duration'?durations:(allPlaces().length?allPlaces():['Ваше місце']));if($('#scenarioSecondLabel'))$('#scenarioSecondLabel').textContent=scenMode==='duration'?'Тривалість':'Місце'}const aTarget=forced?.a||scenarios[Math.floor(Math.random()*scenarios.length)], pool=scenMode==='duration'?durations:(allPlaces().length?allPlaces():['Ваше місце']), bTarget=forced?.b||pool[Math.floor(Math.random()*pool.length)];if(!remote)window.SessionSync?.sendUI?.('game-action',{action:'scenario-roll',mode:scenMode,a:aTarget,b:bTarget});const [a,b]=await Promise.all([scenReel.spinTo(aTarget),secondReel.spinTo(bTarget)]),box=$('#scenarioResult');box.hidden=false;box.innerHTML=`<small>Ваш сценарій</small><strong>${a} — ${b}</strong>`}
-  $('#scenarioRollBtn')?.addEventListener('click',()=>runScenarioRoll());
-  document.addEventListener('session:remote-ui',e=>{const m=e.detail||{};if(m.kind!=='game-action')return;const p=m.payload||{};if(p.action==='scenario-roll')runScenarioRoll(p,true);});
-  // 5 minutes
-  const fiveModes=['Тільки дотики','Тільки поцілунки','Без рук','Один керує','Повільний темп','Без слів'];let fiveSec=300,fiveTimerId=null,fiveMode=fiveModes[0];
-  function fiveDraw(){if($('#fiveTimer'))$('#fiveTimer').textContent=`${String(Math.floor(fiveSec/60)).padStart(2,'0')}:${String(fiveSec%60).padStart(2,'0')}`;if($('#fiveMode'))$('#fiveMode').textContent=fiveMode}
-  $('#fiveRandomBtn')?.addEventListener('click',()=>{fiveMode=fiveModes[Math.floor(Math.random()*fiveModes.length)];fiveDraw()});$('#fiveStartBtn')?.addEventListener('click',()=>{if(fiveTimerId)return;fiveTimerId=setInterval(()=>{fiveSec--;fiveDraw();if(fiveSec<=0){clearInterval(fiveTimerId);fiveTimerId=null;$('#fiveRating').hidden=false}},1000)});$('#fiveResetBtn')?.addEventListener('click',()=>{clearInterval(fiveTimerId);fiveTimerId=null;fiveSec=300;$('#fiveRating').hidden=true;fiveDraw()});
-  document.querySelectorAll('#fiveRating [data-rating]').forEach(b=>b.addEventListener('click',()=>{const d=parse(RATINGS,[]);d.push({rating:+b.dataset.rating,mode:fiveMode,at:Date.now()});save(RATINGS,d);$('#fiveRatingHistory').textContent=`Остання оцінка: ${b.dataset.rating}/5`;$('#fiveRating').hidden=true}));fiveDraw();
-  // blind choice
-  function newBlind(){const box=$('#blindCards'),res=$('#blindResult');if(!box)return;res.hidden=true;box.innerHTML='';for(let i=0;i<3;i++){const b=document.createElement('button');b.className='blind-card';b.innerHTML='<span>?</span><small>Обрати</small>';b.onclick=()=>revealBlind(b);box.appendChild(b)}}
-  function revealBlind(btn){if(btn.classList.contains('opened'))return;const types=['Дія','Поза','Місце','Бажання','Бонус'],type=types[Math.floor(Math.random()*types.length)];let value='';if(type==='Дія')value=actions[Math.floor(Math.random()*actions.length)];if(type==='Поза'){const a=poses(),r=a[Math.floor(Math.random()*a.length)];value=r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Поза'}if(type==='Місце'){const a=allPlaces();value=a[Math.floor(Math.random()*a.length)]||'Ваше місце'}if(type==='Бажання'){const d=parse(SECRET,[[],[]]).flat();value=d.length?d[Math.floor(Math.random()*d.length)]:'Додайте бажання у грі «Таємне бажання»'}if(type==='Бонус')value='+1 бал поточному гравцю';btn.classList.add('opened');btn.innerHTML=`<strong>${type}</strong><small>${escapeHtml(value)}</small>`;const res=$('#blindResult');res.hidden=false;res.innerHTML=`<small>${type}</small><strong>${escapeHtml(value)}</strong>`}$('#blindResetBtn')?.addEventListener('click',newBlind);newBlind();
-  // battle
-  function addBattle(p,input){const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()};function renderBattle(){const d=parse(BATTLE,[[],[]]);if($('#battleCounts'))$('#battleCounts').textContent=`${extraParticipantLabel(0,true)}: ${(d[0]||[]).length}/10 · ${extraParticipantLabel(1,true)}: ${(d[1]||[]).length}/10`;const w=parse(BWIN,[]);if($('#battleWinners'))$('#battleWinners').innerHTML=w.length?w.map(x=>`<span class="wish-chip">${escapeHtml(x)}</span>`).join(''):'<span class="muted">Ще немає переможців</span>'}
-  $('#battleP1Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(0,'#battleP1Input')});$('#battleP2Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(1,'#battleP2Input')});$('#battleStartBtn')?.addEventListener('click',()=>{const d=parse(BATTLE,[[],[]]),arena=$('#battleArena');if(!(d[0]?.length&&d[1]?.length)){arena.hidden=false;arena.innerHTML='<strong>Додайте бажання від обох гравців.</strong>';return}const a=d[0][Math.floor(Math.random()*d[0].length)],b=d[1][Math.floor(Math.random()*d[1].length)];arena.hidden=false;arena.innerHTML=`<button class="battle-option">${escapeHtml(a)}</button><span>VS</span><button class="battle-option">${escapeHtml(b)}</button>`;arena.querySelectorAll('.battle-option').forEach(x=>x.onclick=()=>{const w=parse(BWIN,[]);w.push(x.textContent);save(BWIN,w);renderBattle();arena.hidden=true})});renderBattle();
-  // quest
-  let quest=null,questStep=0;function makeQuest(){const ps=poses(),wish=parse(SECRET,[[],[]]).flat();return [{type:'Місце',value:(()=>{const a=allPlaces();return a[Math.floor(Math.random()*a.length)]||'Обране вами місце'})()},{type:'Дія',value:actions[Math.floor(Math.random()*actions.length)]},{type:'Частина тіла',value:bodies[Math.floor(Math.random()*bodies.length)]},{type:'Поза',value:(()=>{const r=ps[Math.floor(Math.random()*ps.length)];return r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Випадкова поза'})()},{type:'Фінальне бажання',value:wish.length?wish[Math.floor(Math.random()*wish.length)]:'Додайте власне бажання'}]};function renderQuest(){const el=$('#questSteps');if(!el)return;el.innerHTML=(quest||[]).map((s,i)=>`<div class="quest-step ${i<questStep?'done':i===questStep?'active':'locked'}"><span>${i+1}</span><div><small>${s.type}</small><strong>${i<=questStep?escapeHtml(s.value):'Заблоковано'}</strong></div></div>`).join('');$('#questNextBtn').disabled=!quest||questStep>=quest.length-1}$('#questNewBtn')?.addEventListener('click',()=>{quest=makeQuest();questStep=0;renderQuest()});$('#questNextBtn')?.addEventListener('click',()=>{if(quest&&questStep<quest.length-1){questStep++;renderQuest()}});renderQuest();
+  function showSecret(r){const box=$('#secretWishResult');if(!box)return;box.hidden=false;box.innerHTML=`<small>Бажання від: ${extraParticipantLabel(r.p,true)}</small><strong>${esc(r.x)}</strong>`}
+  $('#revealSecretWishBtn')?.addEventListener('click',()=>{const d=parse(SECRET,[[],[]]),pool=[...(d[0]||[]).map(x=>({p:0,x})),...(d[1]||[]).map(x=>({p:1,x}))],box=$('#secretWishResult');if(!pool.length){box.hidden=false;box.innerHTML='<strong>Спочатку додайте хоча б одне бажання.</strong>';return}const r=pool[Math.floor(Math.random()*pool.length)];showSecret(r);send('secret-wish-reveal',{result:r})});
+
+  const scenarios=['Романтика','Швидко','Повільно','Без слів','Із зав’язаними очима','У новому місці','Тільки поцілунки'],durations=['2 хв','5 хв','10 хв','15 хв','20 хв'];let scenMode='duration';
+  function simpleReel(el,items){if(!el)return;const track=el.querySelector('.slot-track');let idx=Math.floor(Math.random()*items.length);function draw(){track.innerHTML=[-1,0,1].map(o=>`<div class="slot-item ${o===0?'active':''}">${esc(items[(idx+o+items.length)%items.length])}</div>`).join('')}draw();return{setItems(a){items=a;idx%=Math.max(a.length,1);draw()},spinTo(value=null){return new Promise(res=>{const target=value==null?Math.floor(Math.random()*items.length):Math.max(0,items.indexOf(value));let steps=18+Math.floor(Math.random()*10),i=0;const t=setInterval(()=>{idx=(idx+1)%items.length;draw();if(++i>=steps){clearInterval(t);idx=target;draw();res(items[idx])}},70+i*3)})}}}
+  const scenReel=simpleReel($('#scenarioMainReel'),scenarios),secondReel=simpleReel($('#scenarioSecondReel'),durations);
+  function setScenarioMode(mode,sync=true){scenMode=mode==='place'?'place':'duration';$('#scenarioSecondType')?.querySelectorAll('button').forEach(x=>x.classList.toggle('active',x.dataset.mode===scenMode));const arr=scenMode==='duration'?durations:allPlaces();secondReel?.setItems(arr.length?arr:['Ваше місце']);if($('#scenarioSecondLabel'))$('#scenarioSecondLabel').textContent=scenMode==='duration'?'Тривалість':'Місце';if(sync)send('scenario-mode',{mode:scenMode})}
+  $('#scenarioSecondType')?.addEventListener('click',e=>{const b=e.target.closest('[data-mode]');if(b)setScenarioMode(b.dataset.mode,true)});
+  async function rollScenario(p={},remote=false){if(p.mode)setScenarioMode(p.mode,false);const pool=scenMode==='duration'?durations:(allPlaces().length?allPlaces():['Ваше місце']),a=p.a||scenarios[Math.floor(Math.random()*scenarios.length)],b=p.b||pool[Math.floor(Math.random()*pool.length)],startAt=p.startAt||(window.SessionSync?.connected?Date.now()+500:null);if(!remote)send('scenario-roll',{mode:scenMode,a,b,startAt});if(startAt)await wait(startAt);const vals=await Promise.all([scenReel.spinTo(a),secondReel.spinTo(b)]),box=$('#scenarioResult');box.hidden=false;box.innerHTML=`<small>Ваш сценарій</small><strong>${vals[0]} — ${vals[1]}</strong>`}
+  $('#scenarioRollBtn')?.addEventListener('click',()=>rollScenario());
+
+  const fiveModes=['Тільки дотики','Тільки поцілунки','Без рук','Один керує','Повільний темп','Без слів'];let fiveSec=300,fiveTimerId=null,fiveMode=fiveModes[0],fiveEndAt=null;
+  function fiveDraw(){if(fiveEndAt&&fiveTimerId)fiveSec=Math.max(0,Math.ceil((fiveEndAt-Date.now())/1000));if($('#fiveTimer'))$('#fiveTimer').textContent=`${String(Math.floor(fiveSec/60)).padStart(2,'0')}:${String(fiveSec%60).padStart(2,'0')}`;if($('#fiveMode'))$('#fiveMode').textContent=fiveMode}
+  function setFiveMode(mode,sync=true){fiveMode=mode||fiveModes[0];fiveDraw();if(sync)send('five-mode',{mode:fiveMode})}
+  function startFive(endAt=null,sync=true){clearInterval(fiveTimerId);fiveEndAt=endAt||Date.now()+fiveSec*1000;fiveTimerId=setInterval(()=>{fiveDraw();if(fiveSec<=0){clearInterval(fiveTimerId);fiveTimerId=null;fiveEndAt=null;$('#fiveRating').hidden=false}},250);if(sync)send('five-start',{mode:fiveMode,endAt:fiveEndAt})}
+  function resetFive(sync=true){clearInterval(fiveTimerId);fiveTimerId=null;fiveEndAt=null;fiveSec=300;$('#fiveRating').hidden=true;fiveDraw();if(sync)send('five-reset')}
+  $('#fiveRandomBtn')?.addEventListener('click',()=>setFiveMode(fiveModes[Math.floor(Math.random()*fiveModes.length)],true));$('#fiveStartBtn')?.addEventListener('click',()=>{if(!fiveTimerId)startFive(null,true)});$('#fiveResetBtn')?.addEventListener('click',()=>resetFive(true));
+  document.querySelectorAll('#fiveRating [data-rating]').forEach(b=>b.addEventListener('click',()=>{const d=parse(RATINGS,[]);d.push({rating:+b.dataset.rating,mode:fiveMode,at:Date.now()});save(RATINGS,d);$('#fiveRatingHistory').textContent=`Остання оцінка: ${b.dataset.rating}/5`;$('#fiveRating').hidden=true;send('five-rating',{rating:+b.dataset.rating,mode:fiveMode})}));fiveDraw();
+
+  function newBlind(sync=false){const box=$('#blindCards'),res=$('#blindResult');if(!box)return;res.hidden=true;box.innerHTML='';for(let i=0;i<3;i++){const b=document.createElement('button');b.className='blind-card';b.dataset.index=String(i);b.innerHTML='<span>?</span><small>Обрати</small>';b.onclick=()=>revealBlind(b,null,true);box.appendChild(b)}if(sync)send('blind-reset')}
+  function blindResult(){const types=['Дія','Поза','Місце','Бажання','Бонус'],type=types[Math.floor(Math.random()*types.length)];let value='';if(type==='Дія')value=actions[Math.floor(Math.random()*actions.length)];if(type==='Поза'){const a=poses(),r=a[Math.floor(Math.random()*a.length)];value=r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Поза'}if(type==='Місце'){const a=allPlaces();value=a[Math.floor(Math.random()*a.length)]||'Ваше місце'}if(type==='Бажання'){const d=parse(SECRET,[[],[]]).flat();value=d.length?d[Math.floor(Math.random()*d.length)]:'Додайте бажання у грі «Таємне бажання»'}if(type==='Бонус')value='+1 бал поточному гравцю';return{type,value}}
+  function revealBlind(btn,r=null,sync=false){if(!btn||btn.classList.contains('opened'))return;r=r||blindResult();btn.classList.add('opened');btn.innerHTML=`<strong>${r.type}</strong><small>${esc(r.value)}</small>`;const res=$('#blindResult');res.hidden=false;res.innerHTML=`<small>${r.type}</small><strong>${esc(r.value)}</strong>`;if(sync)send('blind-reveal',{index:Number(btn.dataset.index||0),result:r})}
+  $('#blindResetBtn')?.addEventListener('click',()=>newBlind(true));newBlind(false);
+
+  function addBattle(p,input){const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()}
+  function renderBattle(){const d=parse(BATTLE,[[],[]]);if($('#battleCounts'))$('#battleCounts').textContent=`${extraParticipantLabel(0,true)}: ${(d[0]||[]).length}/10 · ${extraParticipantLabel(1,true)}: ${(d[1]||[]).length}/10`;const w=parse(BWIN,[]);if($('#battleWinners'))$('#battleWinners').innerHTML=w.length?w.map(x=>`<span class="wish-chip">${esc(x)}</span>`).join(''):'<span class="muted">Ще немає переможців</span>'}
+  $('#battleP1Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(0,'#battleP1Input')});$('#battleP2Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(1,'#battleP2Input')});
+  function showBattle(a,b,sync=false){const arena=$('#battleArena');arena.hidden=false;arena.innerHTML=`<button class="battle-option" data-value="${esc(a)}">${esc(a)}</button><span>VS</span><button class="battle-option" data-value="${esc(b)}">${esc(b)}</button>`;arena.querySelectorAll('.battle-option').forEach(x=>x.onclick=()=>voteBattle(x.dataset.value,true));if(sync)send('battle-start',{a,b})}
+  function voteBattle(value,sync=false){const w=parse(BWIN,[]);w.push(value);save(BWIN,w);renderBattle();$('#battleArena').hidden=true;if(sync)send('battle-vote',{value})}
+  $('#battleStartBtn')?.addEventListener('click',()=>{const d=parse(BATTLE,[[],[]]),arena=$('#battleArena');if(!(d[0]?.length&&d[1]?.length)){arena.hidden=false;arena.innerHTML='<strong>Додайте бажання від обох гравців.</strong>';return}showBattle(d[0][Math.floor(Math.random()*d[0].length)],d[1][Math.floor(Math.random()*d[1].length)],true)});renderBattle();
+
+  let quest=null,questStep=0;function makeQuest(){const ps=poses(),wish=parse(SECRET,[[],[]]).flat();return[{type:'Місце',value:(()=>{const a=allPlaces();return a[Math.floor(Math.random()*a.length)]||'Обране вами місце'})()},{type:'Дія',value:actions[Math.floor(Math.random()*actions.length)]},{type:'Частина тіла',value:bodies[Math.floor(Math.random()*bodies.length)]},{type:'Поза',value:(()=>{const r=ps[Math.floor(Math.random()*ps.length)];return r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Випадкова поза'})()},{type:'Фінальне бажання',value:wish.length?wish[Math.floor(Math.random()*wish.length)]:'Додайте власне бажання'}]}
+  function renderQuest(){const el=$('#questSteps');if(!el)return;el.innerHTML=(quest||[]).map((q,i)=>`<div class="quest-step ${i<questStep?'done':i===questStep?'active':'locked'}"><span>${i+1}</span><div><small>${q.type}</small><strong>${i<=questStep?esc(q.value):'Заблоковано'}</strong></div></div>`).join('');$('#questNextBtn').disabled=!quest||questStep>=quest.length-1}
+  function setQuest(q,step=0,sync=false){quest=q;questStep=step;renderQuest();if(sync)send('quest-state',{quest,step:questStep})}
+  $('#questNewBtn')?.addEventListener('click',()=>setQuest(makeQuest(),0,true));$('#questNextBtn')?.addEventListener('click',()=>{if(quest&&questStep<quest.length-1)setQuest(quest,questStep+1,true)});renderQuest();
+
+  document.addEventListener('session:remote-ui',e=>{const m=e.detail||{};if(m.kind!=='game-action')return;const p=m.payload||{};
+    if(p.action==='secret-wish-reveal')showSecret(p.result);
+    if(p.action==='scenario-mode')setScenarioMode(p.mode,false);
+    if(p.action==='scenario-roll')rollScenario(p,true);
+    if(p.action==='five-mode')setFiveMode(p.mode,false);
+    if(p.action==='five-start'){setFiveMode(p.mode,false);startFive(p.endAt,false)}
+    if(p.action==='five-reset')resetFive(false);
+    if(p.action==='five-rating'){if($('#fiveRatingHistory'))$('#fiveRatingHistory').textContent=`Остання оцінка: ${p.rating}/5`;if($('#fiveRating'))$('#fiveRating').hidden=true}
+    if(p.action==='blind-reset')newBlind(false);
+    if(p.action==='blind-reveal')revealBlind($(`#blindCards .blind-card[data-index="${p.index}"]`),p.result,false);
+    if(p.action==='battle-start')showBattle(p.a,p.b,false);
+    if(p.action==='battle-vote')voteBattle(p.value,false);
+    if(p.action==='quest-state')setQuest(p.quest,p.step,false);
+  });
   document.addEventListener('pair:changed',()=>{renderSecret();renderBattle()});renderSecret();
 })();
 
-// --- P2P session sync v31: stable UI + auto restore + control replies ---
+// --- P2P session sync v33: deterministic game events + auto restore ---
 (() => {
   'use strict';
   const $=s=>document.querySelector(s);
