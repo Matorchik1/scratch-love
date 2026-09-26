@@ -194,25 +194,19 @@
           <div id="activeGameTitle" class="active-game-title"></div>
         </div>
 
-        <section id="playersPanel" class="players-panel" hidden>
-          <div class="player-field player-profile">
-            <label for="player1Name">Гравець 1</label>
-            <input id="player1Name" maxlength="24" value="Гравець 1">
-            <select id="player1Gender" aria-label="Стать гравця 1">
-              <option value="male">Чоловіча</option>
-              <option value="female">Жіноча</option>
-            </select>
+        <section id="playersPanel" class="players-panel relative-players" hidden>
+          <div class="relative-player-card self-player-card">
+            <small>Ви</small>
+            <strong id="selfPlayerName">—</strong>
+            <span id="selfPlayerGender">—</span>
           </div>
-          <div class="score-card"><span id="player1Score">0</span><small>балів</small></div>
-          <div class="turn-box"><small>Хід</small><strong id="currentPlayerName">Гравець 1</strong><em id="currentTargetName">→ Гравець 2</em></div>
-          <div class="score-card"><span id="player2Score">0</span><small>балів</small></div>
-          <div class="player-field player-profile">
-            <label for="player2Name">Гравець 2</label>
-            <input id="player2Name" maxlength="24" value="Гравець 2">
-            <select id="player2Gender" aria-label="Стать гравця 2">
-              <option value="female">Жіноча</option>
-              <option value="male">Чоловіча</option>
-            </select>
+          <div class="score-card"><span id="player1Score">0</span><small>ваші бали</small></div>
+          <div class="turn-box"><small>Хід</small><strong id="currentPlayerName">—</strong><em id="currentTargetName">—</em></div>
+          <div class="score-card"><span id="player2Score">0</span><small>бали партнера</small></div>
+          <div class="relative-player-card partner-player-card">
+            <small>Ваш партнер</small>
+            <strong id="partnerPlayerName">—</strong>
+            <span id="partnerPlayerGender">—</span>
           </div>
           <button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button>
         </section>
@@ -351,7 +345,7 @@
 
         <article class="game-card single-game-view" id="wishBattleGameView" hidden>
           <div class="game-card-head"><div><div class="eyebrow">⚔️ БАТЛ БАЖАНЬ</div><h2>Бажання проти бажання</h2><p>Додайте 5–10 бажань від кожного гравця. Система випадково формує пару, а ви обираєте переможця.</p></div></div>
-          <div class="battle-add-grid"><form id="battleP1Form" class="inline-form"><input id="battleP1Input" maxlength="100" placeholder="Бажання гравця 1"><button class="btn secondary">Додати</button></form><form id="battleP2Form" class="inline-form"><input id="battleP2Input" maxlength="100" placeholder="Бажання гравця 2"><button class="btn secondary">Додати</button></form></div><div id="battleCounts" class="private-count"></div>
+          <div class="battle-add-grid"><form id="battleP1Form" class="inline-form"><input id="battleP1Input" maxlength="100" placeholder="Ваше бажання"><button class="btn secondary">Додати</button></form><form id="battleP2Form" class="inline-form"><input id="battleP2Input" maxlength="100" placeholder="Бажання партнера"><button class="btn secondary">Додати</button></form></div><div id="battleCounts" class="private-count"></div>
           <button class="btn primary big-roll" id="battleStartBtn">Почати батл</button><div id="battleArena" class="battle-arena" hidden></div><div><h3>На потім</h3><div id="battleWinners" class="wish-winners"></div></div>
         </article>
 

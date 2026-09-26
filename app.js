@@ -531,28 +531,50 @@ const pairStorage={
   const getTurn=()=>Number(pairStorage.getItem(TURN_KEY)||0)%2;
   const setTurn=t=>pairStorage.setItem(TURN_KEY,String(t%2));
 
-  const namesEls=[$('#player1Name'),$('#player2Name')],
-        genderEls=[$('#player1Gender'),$('#player2Gender')],
-        scoreEls=[$('#player1Score'),$('#player2Score')],
-        currentName=$('#currentPlayerName'),
-        currentTarget=$('#currentTargetName');
+  const scoreEls=[$('#player1Score'),$('#player2Score')],
+        selfPlayerName=$('#selfPlayerName'), partnerPlayerName=$('#partnerPlayerName'),
+        selfPlayerGender=$('#selfPlayerGender'), partnerPlayerGender=$('#partnerPlayerGender'),
+        currentName=$('#currentPlayerName'), currentTarget=$('#currentTargetName');
+
+  function getViewRole(){
+    const sessionRole=window.SessionSync?.role;
+    if(sessionRole===0||sessionRole===1) return Number(sessionRole);
+    const saved=Number(pairStorage.getItem('sa_local_view_role_v1'));
+    return saved===1?1:0;
+  }
+  function participantLabel(index,withName=true){
+    const names=getNames(), self=getViewRole();
+    const prefix=index===self?'Ви':'Ваш партнер';
+    return withName?`${prefix} — ${names[index]||('Гравець '+(index+1))}`:prefix;
+  }
+  function genderLabel(g){ return g==='female'?'Жіноча стать':'Чоловіча стать'; }
 
   function syncPlayers(){
     const names=getNames(), genders=getGenders(), score=getScore(), turn=getTurn(), target=(turn+1)%2;
-    namesEls.forEach((el,i)=>{if(el && document.activeElement!==el) el.value=names[i]});
-    genderEls.forEach((el,i)=>{if(el && document.activeElement!==el) el.value=genders[i]});
-    scoreEls.forEach((el,i)=>{if(el) el.textContent=score[i]});
-    if(currentName) currentName.textContent=names[turn];
-    if(currentTarget) currentTarget.textContent=`→ ${names[target]}`;
+    const self=getViewRole(), partner=(self+1)%2;
+    if(selfPlayerName) selfPlayerName.textContent=names[self]||`Гравець ${self+1}`;
+    if(partnerPlayerName) partnerPlayerName.textContent=names[partner]||`Гравець ${partner+1}`;
+    if(selfPlayerGender) selfPlayerGender.textContent=genderLabel(genders[self]);
+    if(partnerPlayerGender) partnerPlayerGender.textContent=genderLabel(genders[partner]);
+    if(scoreEls[0]) scoreEls[0].textContent=score[self]??0;
+    if(scoreEls[1]) scoreEls[1].textContent=score[partner]??0;
+    if(currentName) currentName.textContent=participantLabel(turn,true);
+    if(currentTarget) currentTarget.textContent=`→ ${participantLabel(target,true)}`;
     refreshBodyPools();
+    updateRelativeGameLabels();
   }
-  namesEls.forEach((el,i)=>el?.addEventListener('input',()=>{
-    const n=getNames(); n[i]=el.value.trim()||`Гравець ${i+1}`; setNames(n); syncPlayers();
-  }));
-  genderEls.forEach((el,i)=>el?.addEventListener('change',()=>{
-    const g=getGenders(); g[i]=el.value; setGenders(g); syncPlayers();
-  }));
   $('#resetScoreBtn')?.addEventListener('click',()=>{setScore([0,0]);setTurn(0);syncPlayers()});
+  document.addEventListener('pair:changed',()=>syncPlayers());
+
+  function updateRelativeGameLabels(){
+    const self=getViewRole(), partner=(self+1)%2, names=getNames();
+    const p1Title=$('#secretWishP1Title'),p2Title=$('#secretWishP2Title');
+    if(p1Title)p1Title.textContent=participantLabel(0,true); if(p2Title)p2Title.textContent=participantLabel(1,true);
+    const b1=$('#battleP1Input'),b2=$('#battleP2Input');
+    if(b1)b1.placeholder=(self===0?'Ваше бажання':`Бажання — ${names[0]}`);
+    if(b2)b2.placeholder=(self===1?'Ваше бажання':`Бажання — ${names[1]}`);
+  }
+  document.addEventListener('session:role-changed',()=>syncPlayers());
 
   function showTab(which, syncSession=true){
     calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(progressSection)progressSection.hidden=which!=='progress';
@@ -930,7 +952,7 @@ const pairStorage={
   function showResult(gameKey,resultText,turnLabelEl,resultEl,box){
     const names=getNames(),turn=getTurn(),target=(turn+1)%2;
     pendingGame={gameKey,turn};
-    if(turnLabelEl) turnLabelEl.textContent=`${names[turn]} → ${names[target]}`;
+    if(turnLabelEl) turnLabelEl.textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;
     if(resultEl) resultEl.textContent=resultText;
     if(box) box.hidden=false;
   }
@@ -1060,9 +1082,9 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   const actions=['Поцілунок','Дотик','Масаж','Стиснути','Облизати','Смоктати','Шльопання'];
   const bodies=['Рука','Сідниці','Спина','Живіт','Щоки','Груди','Пах','Вухо','Стопи','Палець','Коліна','Нога','Губи','Пупок','Шия','Соски','Промежина','Стегно','Пальці ніг'];
   function addSecret(player,input){const val=$(input)?.value.trim();if(!val)return;const d=parse(SECRET,[[],[]]);d[player]||=[];d[player].push(val);save(SECRET,d);$(input).value='';renderSecret()}
-  function renderSecret(){const d=parse(SECRET,[[],[]]), n=names(); if($('#secretWishP1Title'))$('#secretWishP1Title').textContent=n[0]||'Гравець 1';if($('#secretWishP2Title'))$('#secretWishP2Title').textContent=n[1]||'Гравець 2';if($('#secretWishP1Count'))$('#secretWishP1Count').textContent=`Збережено таємно: ${(d[0]||[]).length}`;if($('#secretWishP2Count'))$('#secretWishP2Count').textContent=`Збережено таємно: ${(d[1]||[]).length}`}
+  function renderSecret(){const d=parse(SECRET,[[],[]]); if($('#secretWishP1Title'))$('#secretWishP1Title').textContent=participantLabel(0,true);if($('#secretWishP2Title'))$('#secretWishP2Title').textContent=participantLabel(1,true);if($('#secretWishP1Count'))$('#secretWishP1Count').textContent=`Збережено таємно: ${(d[0]||[]).length}`;if($('#secretWishP2Count'))$('#secretWishP2Count').textContent=`Збережено таємно: ${(d[1]||[]).length}`}
   $('#secretWishP1Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(0,'#secretWishP1Input')});$('#secretWishP2Form')?.addEventListener('submit',e=>{e.preventDefault();addSecret(1,'#secretWishP2Input')});
-  $('#revealSecretWishBtn')?.addEventListener('click',()=>{const d=parse(SECRET,[[],[]]), pool=[...(d[0]||[]).map(x=>({p:0,x})),...(d[1]||[]).map(x=>({p:1,x}))],box=$('#secretWishResult'),n=names();if(!pool.length){box.hidden=false;box.innerHTML='<strong>Спочатку додайте хоча б одне бажання.</strong>';return}const r=pool[Math.floor(Math.random()*pool.length)];box.hidden=false;box.innerHTML=`<small>Бажання від ${n[r.p]||'гравця'}</small><strong>${escapeHtml(r.x)}</strong>`});
+  $('#revealSecretWishBtn')?.addEventListener('click',()=>{const d=parse(SECRET,[[],[]]), pool=[...(d[0]||[]).map(x=>({p:0,x})),...(d[1]||[]).map(x=>({p:1,x}))],box=$('#secretWishResult'),n=names();if(!pool.length){box.hidden=false;box.innerHTML='<strong>Спочатку додайте хоча б одне бажання.</strong>';return}const r=pool[Math.floor(Math.random()*pool.length)];box.hidden=false;box.innerHTML=`<small>Бажання від: ${participantLabel(r.p,true)}</small><strong>${escapeHtml(r.x)}</strong>`});
   function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
   // scenario reels
   const scenarios=['Романтика','Швидко','Повільно','Без слів','Із зав’язаними очима','У новому місці','Тільки поцілунки']; const durations=['2 хв','5 хв','10 хв','15 хв','20 хв']; let scenMode='duration';
@@ -1079,7 +1101,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   function newBlind(){const box=$('#blindCards'),res=$('#blindResult');if(!box)return;res.hidden=true;box.innerHTML='';for(let i=0;i<3;i++){const b=document.createElement('button');b.className='blind-card';b.innerHTML='<span>?</span><small>Обрати</small>';b.onclick=()=>revealBlind(b);box.appendChild(b)}}
   function revealBlind(btn){if(btn.classList.contains('opened'))return;const types=['Дія','Поза','Місце','Бажання','Бонус'],type=types[Math.floor(Math.random()*types.length)];let value='';if(type==='Дія')value=actions[Math.floor(Math.random()*actions.length)];if(type==='Поза'){const a=poses(),r=a[Math.floor(Math.random()*a.length)];value=r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Поза'}if(type==='Місце'){const a=allPlaces();value=a[Math.floor(Math.random()*a.length)]||'Ваше місце'}if(type==='Бажання'){const d=parse(SECRET,[[],[]]).flat();value=d.length?d[Math.floor(Math.random()*d.length)]:'Додайте бажання у грі «Таємне бажання»'}if(type==='Бонус')value='+1 бал поточному гравцю';btn.classList.add('opened');btn.innerHTML=`<strong>${type}</strong><small>${escapeHtml(value)}</small>`;const res=$('#blindResult');res.hidden=false;res.innerHTML=`<small>${type}</small><strong>${escapeHtml(value)}</strong>`}$('#blindResetBtn')?.addEventListener('click',newBlind);newBlind();
   // battle
-  function addBattle(p,input){const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()};function renderBattle(){const d=parse(BATTLE,[[],[]]);if($('#battleCounts'))$('#battleCounts').textContent=`Гравець 1: ${(d[0]||[]).length}/10 · Гравець 2: ${(d[1]||[]).length}/10`;const w=parse(BWIN,[]);if($('#battleWinners'))$('#battleWinners').innerHTML=w.length?w.map(x=>`<span class="wish-chip">${escapeHtml(x)}</span>`).join(''):'<span class="muted">Ще немає переможців</span>'}
+  function addBattle(p,input){const v=$(input)?.value.trim();if(!v)return;const d=parse(BATTLE,[[],[]]);d[p]||=[];if(d[p].length<10)d[p].push(v);save(BATTLE,d);$(input).value='';renderBattle()};function renderBattle(){const d=parse(BATTLE,[[],[]]);if($('#battleCounts'))$('#battleCounts').textContent=`${participantLabel(0,true)}: ${(d[0]||[]).length}/10 · ${participantLabel(1,true)}: ${(d[1]||[]).length}/10`;const w=parse(BWIN,[]);if($('#battleWinners'))$('#battleWinners').innerHTML=w.length?w.map(x=>`<span class="wish-chip">${escapeHtml(x)}</span>`).join(''):'<span class="muted">Ще немає переможців</span>'}
   $('#battleP1Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(0,'#battleP1Input')});$('#battleP2Form')?.addEventListener('submit',e=>{e.preventDefault();addBattle(1,'#battleP2Input')});$('#battleStartBtn')?.addEventListener('click',()=>{const d=parse(BATTLE,[[],[]]),arena=$('#battleArena');if(!(d[0]?.length&&d[1]?.length)){arena.hidden=false;arena.innerHTML='<strong>Додайте бажання від обох гравців.</strong>';return}const a=d[0][Math.floor(Math.random()*d[0].length)],b=d[1][Math.floor(Math.random()*d[1].length)];arena.hidden=false;arena.innerHTML=`<button class="battle-option">${escapeHtml(a)}</button><span>VS</span><button class="battle-option">${escapeHtml(b)}</button>`;arena.querySelectorAll('.battle-option').forEach(x=>x.onclick=()=>{const w=parse(BWIN,[]);w.push(x.textContent);save(BWIN,w);renderBattle();arena.hidden=true})});renderBattle();
   // quest
   let quest=null,questStep=0;function makeQuest(){const ps=poses(),wish=parse(SECRET,[[],[]]).flat();return [{type:'Місце',value:(()=>{const a=allPlaces();return a[Math.floor(Math.random()*a.length)]||'Обране вами місце'})()},{type:'Дія',value:actions[Math.floor(Math.random()*actions.length)]},{type:'Частина тіла',value:bodies[Math.floor(Math.random()*bodies.length)]},{type:'Поза',value:(()=>{const r=ps[Math.floor(Math.random()*ps.length)];return r?`${r.poseTitle||'Поза'} · №${r.order_index}`:'Випадкова поза'})()},{type:'Фінальне бажання',value:wish.length?wish[Math.floor(Math.random()*wish.length)]:'Додайте власне бажання'}]};function renderQuest(){const el=$('#questSteps');if(!el)return;el.innerHTML=(quest||[]).map((s,i)=>`<div class="quest-step ${i<questStep?'done':i===questStep?'active':'locked'}"><span>${i+1}</span><div><small>${s.type}</small><strong>${i<=questStep?escapeHtml(s.value):'Заблоковано'}</strong></div></div>`).join('');$('#questNextBtn').disabled=!quest||questStep>=quest.length-1}$('#questNewBtn')?.addEventListener('click',()=>{quest=makeQuest();questStep=0;renderQuest()});$('#questNextBtn')?.addEventListener('click',()=>{if(quest&&questStep<quest.length-1){questStep++;renderQuest()}});renderQuest();
@@ -1103,6 +1125,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     const text=conflict?`Конфлікт ролей: обидва обрали ${roleLabel(localRole)}. Перепідключіться та оберіть різні ролі.`:`Ви: ${selected?roleLabel(localRole):'роль не обрана'}${remoteRole===0||remoteRole===1?` · партнер: ${roleLabel(remoteRole)}`:''}`;
     if(roleStatus){roleStatus.hidden=!(connected||restoring);roleStatus.classList.toggle('conflict',conflict);if(connected||restoring)roleStatus.textContent=text}
     if(activeSessionRole){activeSessionRole.hidden=!(connected||restoring);activeSessionRole.classList.toggle('conflict',conflict);if(connected||restoring)activeSessionRole.textContent=text}
+    document.dispatchEvent(new CustomEvent('session:role-changed',{detail:{role:localRole,remoteRole,connected,restoring}}));
   }
   function send(msg){if(conn?.open)try{conn.send(msg)}catch(e){console.warn('session send',e)}}
   function sendPair(pair){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap)})}
