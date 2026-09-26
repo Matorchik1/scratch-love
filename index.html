@@ -89,6 +89,23 @@
       <button class="main-tab" id="progressTabBtn" type="button">Прогрес</button>
     </nav>
 
+    <div id="planningApprovalModal" class="score-finish-modal planning-approval-modal" hidden>
+      <div class="score-finish-dialog planning-approval-dialog" role="dialog" aria-modal="true" aria-labelledby="planningApprovalTitle">
+        <div class="score-finish-icon" id="planningApprovalIcon">🗓️</div>
+        <h3 id="planningApprovalTitle">Погодити планування?</h3>
+        <p id="planningApprovalSummary">—</p>
+        <div class="score-finish-votes">
+          <div class="score-finish-vote" id="planningApprovalSelfVote"><span>Ви</span><strong>Очікує</strong></div>
+          <div class="score-finish-vote" id="planningApprovalPartnerVote"><span>Ваш партнер</span><strong>Очікує</strong></div>
+        </div>
+        <p id="planningApprovalHint" class="muted">Для зміни плану мають погодитися обидва.</p>
+        <div class="score-finish-actions">
+          <button id="planningApprovalAgreeBtn" class="btn primary" type="button">Погодитись</button>
+          <button id="planningApprovalRejectBtn" class="btn secondary" type="button">Відхилити</button>
+        </div>
+      </div>
+    </div>
+
     <section id="calendarSection">
     <header class="hero">
       <div>
@@ -517,6 +534,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js?v=27"></script>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="app.js?v=59"></script>
+  <script src="app.js?v=60"></script>
 </body>
 </html>

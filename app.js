@@ -841,7 +841,7 @@ const pairStorage={
     if(pagePurchaseStatusCount)pagePurchaseStatusCount.textContent=purchaseStats.length;
     if(pagePurchaseStatusList){
       pagePurchaseStatusList.innerHTML='';
-      purchaseStats.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card purchase-stat-card'+(info.purchased?' is-purchased':' is-planned');const qty=Math.max(1,Number(info.qty)||1),total=(Number(info.price)||0)*qty;card.innerHTML=`<div class="game-debt-icon">${info.purchased?'✓':'🗓️'}</div><div><strong>${info.name||'Без назви'}</strong><span>${info.purchased?'Придбано':'В планах'} · ${new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(total)} гривень</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.purchasedAt||info.plannedAt||info.updatedAt||info.createdAt||Date.now()))}</small></div>`;pagePurchaseStatusList.appendChild(card)});
+      purchaseStats.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card purchase-stat-card'+(info.purchased?' is-purchased':' is-planned');const qty=Math.max(1,Number(info.qty)||1),total=(Number(info.price)||0)*qty;const safeUrl=(()=>{try{const u=new URL(info.url||'');return (u.protocol==='http:'||u.protocol==='https:')?u.href:''}catch{return ''}})();card.innerHTML=`<div class="game-debt-icon">${info.purchased?'✓':'🗓️'}</div><div class="purchase-stat-main"><strong>${info.name||'Без назви'}</strong><span>${info.purchased?'Придбано':'В планах'} · ${new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(total)} гривень</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.purchasedAt||info.plannedAt||info.updatedAt||info.createdAt||Date.now()))}</small></div>`;const actions=document.createElement('div');actions.className='purchase-stat-actions';if(safeUrl){const a=document.createElement('a');a.className='btn secondary compact purchase-progress-link';a.href=safeUrl;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Відкрити товар ↗';actions.appendChild(a)}if(!info.purchased){const bought=document.createElement('button');bought.type='button';bought.className='btn primary compact purchase-progress-bought';bought.textContent='Позначити як придбано';bought.addEventListener('click',()=>{if(window.requireSyncedPartnerSession&&!window.requireSyncedPartnerSession())return;const all=pageJSON('sa_desired_purchases_v1',[]);const item=all.find(x=>x.id===info.id);if(!item)return;item.purchased=true;item.purchasedBy=window.SessionSync?.role===1?1:0;item.purchasedAt=Date.now();item.planned=false;item.plannedAt=null;item.plannedBy=null;pairStorage.setItem('sa_desired_purchases_v1',JSON.stringify(all));PairDB.save?.();window.SessionSync?.replyUI?.('purchase-action',{action:'purchased',id:item.id,role:item.purchasedBy,value:true,updatedAt:item.purchasedAt});document.dispatchEvent(new CustomEvent('purchases:render'));document.dispatchEvent(new CustomEvent('progress:changed'));renderProgressPage()});actions.appendChild(bought)}if(actions.childElementCount)card.appendChild(actions);pagePurchaseStatusList.appendChild(card)});
       if(!purchaseStats.length)pagePurchaseStatusList.innerHTML='<p class="empty-state">Поки немає придбаних або запланованих покупок.</p>';
     }
     // Places planned for later.
@@ -954,7 +954,7 @@ const pairStorage={
         });
         row.appendChild(b);
         const plan=document.createElement('button'); plan.type='button'; plan.className='place-plan'+(planned.has(id)&&!done.has(id)?' active':''); plan.title=planned.has(id)?'Прибрати із запланованих':'Додати в заплановано'; plan.setAttribute('aria-label',`${planned.has(id)?'Прибрати із запланованих':'Запланувати'} ${item.label}`); plan.textContent=planned.has(id)&&!done.has(id)?'В планах':'Запланувати'; plan.disabled=done.has(id);
-        plan.addEventListener('click',()=>{if(done.has(id))return;planned.has(id)?planned.delete(id):planned.add(id);pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));renderPlaces();if(progressSection&&!progressSection.hidden)renderProgressPage()});
+        plan.addEventListener('click',()=>{if(done.has(id))return;if(window.CouplePlanning?.propose){window.CouplePlanning.propose({type:'place-plan',targetId:id,label:item.label,value:!planned.has(id)});return;}planned.has(id)?planned.delete(id):planned.add(id);pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));renderPlaces();if(progressSection&&!progressSection.hidden)renderProgressPage()});
         row.appendChild(plan);
         if(item.custom){
           const del=document.createElement('button'); del.type='button'; del.className='place-delete'; del.title='Видалити власне місце'; del.setAttribute('aria-label',`Видалити ${item.label}`); del.textContent='×';
@@ -2063,6 +2063,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       const wrap=plannedBtn.closest('[data-purchase-status-id]'),id=wrap?.dataset.purchaseStatusId;if(!id)return;
       const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
       const value=plannedBtn.dataset.togglePlanned==='1';
+      if(window.CouplePlanning?.propose){window.CouplePlanning.propose({type:'purchase-plan',targetId:id,label:item.name||'Товар',value});return;}
       item.planned=value;item.plannedBy=localRole();item.plannedAt=value?Date.now():null;
       if(value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null;}
       save(all,{event:{action:'planned',id,role:localRole(),value,updatedAt:Date.now()}});
@@ -2140,6 +2141,41 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   document.addEventListener('purchases:render',render);
   document.addEventListener('pair:changed',()=>{if(!section.hidden)render()});
   document.addEventListener('pair:remote-applied',()=>{if(!section.hidden)render()});
+  render();
+})();
+
+
+// --- v60: two-player approval for all planning actions ---
+(() => {
+  'use strict';
+  const KEY='sa_couple_planning_proposal_v1';
+  const modal=document.getElementById('planningApprovalModal');
+  const title=document.getElementById('planningApprovalTitle');
+  const summary=document.getElementById('planningApprovalSummary');
+  const icon=document.getElementById('planningApprovalIcon');
+  const selfVote=document.getElementById('planningApprovalSelfVote');
+  const partnerVote=document.getElementById('planningApprovalPartnerVote');
+  const hint=document.getElementById('planningApprovalHint');
+  const agree=document.getElementById('planningApprovalAgreeBtn');
+  const reject=document.getElementById('planningApprovalRejectBtn');
+  let runtime=null;
+  const role=()=>window.SessionSync?.role===1?1:0;
+  const partner=()=>role()===0?1:0;
+  const players=()=>PairDB.active?.players||[{name:'Гравець 1'},{name:'Гравець 2'}];
+  function read(){if(runtime)return runtime;try{runtime=JSON.parse(pairStorage.getItem(KEY)||'null')}catch{runtime=null}return runtime}
+  function store(v){runtime=v?JSON.parse(JSON.stringify(v)):null;if(v)pairStorage.setItem(KEY,JSON.stringify(v));else pairStorage.removeItem(KEY);render()}
+  function notify(msg){let el=document.getElementById('toast');if(!el){el=document.createElement('div');el.id='planningToast';el.className='toast';document.body.appendChild(el)}el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2400)}
+  function describe(p){if(p.type==='purchase-plan')return `${p.value?'Додати у плани':'Прибрати з планів'}: ${p.label||'товар'}`;if(p.type==='place-plan')return `${p.value?'Запланувати місце':'Прибрати місце з планів'}: ${p.label||'місце'}`;return p.label||'Зміна плану'}
+  function render(){if(!modal)return;const p=read();if(!p){modal.hidden=true;return}modal.hidden=false;const me=role(),other=partner(),names=players().map(x=>x?.name||'Гравець');const approvals=Array.isArray(p.approvals)?p.approvals:[false,false];if(icon)icon.textContent=p.type==='place-plan'?'📍':'🛍️';if(title)title.textContent=p.value?'Погодити планування?':'Погодити зміну плану?';if(summary)summary.textContent=describe(p);if(selfVote){selfVote.querySelector('span').textContent=`Ви — ${names[me]||''}`;selfVote.querySelector('strong').textContent=approvals[me]?'Погоджено ✓':'Очікує';selfVote.classList.toggle('approved',!!approvals[me])}if(partnerVote){partnerVote.querySelector('span').textContent=`Ваш партнер — ${names[other]||''}`;partnerVote.querySelector('strong').textContent=approvals[other]?'Погоджено ✓':'Очікує';partnerVote.classList.toggle('approved',!!approvals[other])}if(agree){agree.disabled=!!approvals[me];agree.textContent=approvals[me]?'Ви погодились ✓':'Погодитись'}if(hint)hint.textContent=approvals[me]&&!approvals[other]?'Очікуємо рішення партнера…':(!approvals[me]&&approvals[other]?'Партнер уже погодився. Потрібне ваше підтвердження.':'Для зміни плану мають погодитися обидва.')}
+  function apply(p){if(!p)return;if(p.type==='purchase-plan'){let all=[];try{all=JSON.parse(pairStorage.getItem('sa_desired_purchases_v1')||'[]')}catch{};const item=Array.isArray(all)?all.find(x=>x.id===p.targetId):null;if(item){item.planned=!!p.value;item.plannedBy=p.value?Number(p.initiator):null;item.plannedAt=p.value?Date.now():null;if(p.value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null}pairStorage.setItem('sa_desired_purchases_v1',JSON.stringify(all));PairDB.save?.();document.dispatchEvent(new CustomEvent('purchases:render'));document.dispatchEvent(new CustomEvent('progress:changed'))}}else if(p.type==='place-plan'){let planned=[];try{planned=JSON.parse(pairStorage.getItem('sa_games_places_planned_v1')||'[]')}catch{};const set=new Set(Array.isArray(planned)?planned:[]);if(p.value)set.add(p.targetId);else set.delete(p.targetId);pairStorage.setItem('sa_games_places_planned_v1',JSON.stringify([...set]));PairDB.save?.();document.dispatchEvent(new CustomEvent('progress:changed'));const btn=document.getElementById('placesTabBtn');if(btn&&btn.classList.contains('active'))btn.dispatchEvent(new Event('noop'))}
+    document.dispatchEvent(new CustomEvent('pair:changed'));
+  }
+  function propose(data){if(window.requireSyncedPartnerSession&&!window.requireSyncedPartnerSession())return;const existing=read();if(existing){render();notify('Спочатку завершіть поточне погодження');return}const p={id:'plan_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),type:data.type,targetId:data.targetId,label:data.label||'',value:!!data.value,initiator:role(),approvals:[false,false],createdAt:Date.now()};store(p);window.SessionSync?.replyUI?.('planning-action',{action:'propose',proposal:p})}
+  function vote(isAgree,remoteRole=null,proposalId=null,sync=true){const p=read();if(!p||proposalId&&p.id!==proposalId)return;const r=remoteRole===0||remoteRole===1?remoteRole:role();if(!isAgree){const id=p.id;store(null);if(sync)window.SessionSync?.replyUI?.('planning-action',{action:'reject',proposalId:id,role:r});notify('Планування скасовано');return}p.approvals ||= [false,false];p.approvals[r]=true;store(p);if(sync)window.SessionSync?.replyUI?.('planning-action',{action:'vote',proposalId:p.id,role:r});if(p.approvals[0]&&p.approvals[1]){apply(p);store(null);notify('План погоджено ✓')}}
+  agree?.addEventListener('click',()=>vote(true));reject?.addEventListener('click',()=>vote(false));
+  document.addEventListener('session:remote-ui',e=>{const m=e.detail||{};if(m.kind!=='planning-action')return;const x=m.payload||{};if(x.action==='propose'&&x.proposal){store(x.proposal);return}if(x.action==='vote'){vote(true,Number(x.role),x.proposalId,false);return}if(x.action==='reject'){const p=read();if(p?.id===x.proposalId){store(null);notify('Партнер відхилив планування')}}});
+  document.addEventListener('pair:changed',render);
+  window.CouplePlanning={propose,render,get active(){return !!read()}};
   render();
 })();
 

@@ -1251,3 +1251,113 @@ img,canvas,svg{max-width:100%}
   .purchase-status-actions{grid-template-columns:1fr 1fr}.purchase-plan-btn,.purchase-bought-btn{font-size:10px;padding-inline:6px}
 }
 @media(max-width:420px){.purchase-status-actions{grid-template-columns:1fr}.purchase-plan-btn,.purchase-bought-btn{min-height:42px;font-size:11px}}
+
+/* v60: polished purchase actions + compact place planning + shared planning approval */
+.purchase-owner-actions,
+.purchase-status-actions,
+.purchase-vote-actions,
+.purchase-priority-actions{
+  gap:8px!important;
+}
+.purchase-edit-btn,
+.purchase-delete-btn,
+.purchase-plan-btn,
+.purchase-bought-btn,
+.purchase-vote-btn,
+.purchase-priority-btn{
+  position:relative;
+  min-height:42px;
+  border-radius:14px!important;
+  border:1px solid rgba(255,255,255,.09)!important;
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025))!important;
+  color:#eee6ed!important;
+  font:inherit;
+  font-size:11px!important;
+  font-weight:850!important;
+  letter-spacing:.01em;
+  cursor:pointer;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+  transition:transform .16s ease,border-color .16s ease,background .16s ease,box-shadow .16s ease;
+}
+.purchase-edit-btn:hover,
+.purchase-plan-btn:hover,
+.purchase-bought-btn:hover,
+.purchase-vote-btn:hover,
+.purchase-priority-btn:hover{
+  transform:translateY(-1px);
+  border-color:rgba(255,119,173,.30)!important;
+  background:linear-gradient(180deg,rgba(255,111,168,.10),rgba(255,255,255,.025))!important;
+}
+.purchase-edit-btn{padding:9px 13px!important;color:#ffc0d6!important}
+.purchase-delete-btn{padding:9px 13px!important;color:#ff9ba9!important;border-color:rgba(255,92,111,.16)!important}
+.purchase-delete-btn:hover{background:rgba(255,75,98,.09)!important;border-color:rgba(255,91,111,.30)!important}
+.purchase-plan-btn{color:#ffd59b!important}
+.purchase-plan-btn.active{border-color:rgba(255,188,83,.34)!important;background:linear-gradient(180deg,rgba(255,184,75,.15),rgba(255,184,75,.06))!important;color:#ffe1ad!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 7px 18px rgba(255,164,57,.08)}
+.purchase-bought-btn{color:#b7efce!important}
+.purchase-bought-btn.active{border-color:rgba(83,219,143,.34)!important;background:linear-gradient(180deg,rgba(83,219,143,.15),rgba(83,219,143,.055))!important;color:#adf0c8!important}
+.purchase-vote-btn.yes.active{border-color:rgba(83,219,143,.34)!important;background:rgba(83,219,143,.11)!important;color:#9feabf!important}
+.purchase-vote-btn.no.active{border-color:rgba(255,91,111,.31)!important;background:rgba(255,91,111,.09)!important;color:#ffadba!important}
+.purchase-priority-btn.active{border-color:rgba(255,127,175,.34)!important;background:rgba(255,105,166,.10)!important;color:#ffc0d6!important}
+
+/* Place planning is intentionally a quiet secondary chip, not a large CTA. */
+.place-item-row{align-items:center!important}
+.place-plan{
+  min-width:0!important;
+  width:auto!important;
+  min-height:30px!important;
+  padding:5px 9px!important;
+  border-radius:999px!important;
+  border:1px solid rgba(255,255,255,.075)!important;
+  background:rgba(255,255,255,.025)!important;
+  color:#aaa1aa!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  box-shadow:none!important;
+}
+.place-plan::before{content:'＋ ';font-weight:900;color:#d3a865}
+.place-plan:hover{background:rgba(255,184,75,.06)!important;border-color:rgba(255,184,75,.18)!important;color:#d8bd95!important}
+.place-plan.active{background:rgba(255,184,75,.075)!important;border-color:rgba(255,184,75,.24)!important;color:#e8c990!important}
+.place-plan.active::before{content:'✓ ';color:#ffc168}
+.place-plan:disabled{opacity:.32!important}
+
+/* Progress purchase cards now support opening and completing a planned purchase. */
+.purchase-stat-card{align-items:center!important}
+.purchase-stat-main{min-width:0;display:grid;gap:3px}
+.purchase-stat-main strong{overflow:hidden;text-overflow:ellipsis}
+.purchase-stat-actions{margin-left:auto;display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.purchase-progress-link,.purchase-progress-bought{white-space:nowrap;text-decoration:none!important;min-height:38px!important;border-radius:12px!important;padding:8px 12px!important;font-size:11px!important}
+.purchase-progress-link{color:#f2e9f0!important}
+.purchase-progress-bought{box-shadow:0 8px 18px rgba(78,211,139,.08)}
+
+.planning-approval-modal{z-index:1300!important}
+.planning-approval-dialog{border-color:rgba(255,183,79,.16)!important;box-shadow:0 28px 80px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.05)!important}
+.planning-approval-dialog #planningApprovalSummary{font-size:15px;color:#f2e8ef;font-weight:750}
+
+@media(max-width:760px){
+  .purchase-owner-actions{width:100%;display:grid!important;grid-template-columns:1fr 1fr!important;margin-top:4px}
+  .purchase-edit-btn,.purchase-delete-btn{width:100%;min-height:40px!important}
+  .purchase-status-actions{grid-template-columns:1fr 1fr!important;gap:8px!important}
+  .purchase-plan-btn,.purchase-bought-btn{min-height:44px!important;font-size:11px!important;padding:8px 9px!important}
+  .purchase-vote-actions{grid-template-columns:1fr 1fr!important}
+  .purchase-vote-btn{min-height:44px!important}
+  .purchase-priority-actions{grid-template-columns:1fr 1fr!important}
+  .purchase-priority-btn{min-height:40px!important}
+  .place-item-row{grid-template-columns:minmax(0,1fr) auto!important;gap:6px!important}
+  .place-plan{grid-column:auto!important;grid-row:auto!important;min-height:29px!important;padding:5px 8px!important;font-size:9px!important}
+  .place-delete{grid-column:auto!important;grid-row:auto!important}
+  .purchase-stat-card{grid-template-columns:auto minmax(0,1fr)!important;gap:10px!important}
+  .purchase-stat-actions{grid-column:1/-1;width:100%;display:grid;grid-template-columns:1fr 1fr;margin-left:0}
+  .purchase-stat-actions>*{width:100%;justify-content:center}
+}
+@media(max-width:460px){
+  .purchase-owner-actions{grid-template-columns:1fr 1fr!important}
+  .purchase-status-actions,.purchase-vote-actions,.purchase-priority-actions{grid-template-columns:1fr!important}
+  .purchase-plan-btn,.purchase-bought-btn,.purchase-vote-btn,.purchase-priority-btn{min-height:45px!important;font-size:11px!important}
+  .place-plan{font-size:0!important;width:30px!important;height:30px!important;padding:0!important;display:grid!important;place-items:center!important}
+  .place-plan::before{content:'＋'!important;font-size:14px!important}
+  .place-plan.active::before{content:'✓'!important}
+  .purchase-stat-actions{grid-template-columns:1fr!important}
+  .planning-approval-modal{padding:10px!important;align-items:end!important}
+  .planning-approval-dialog{border-radius:26px 26px 18px 18px!important;padding:20px 15px 16px!important}
+}
