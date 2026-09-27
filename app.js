@@ -1755,11 +1755,15 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     const position=pd?{open:pd.open,category:$('#positionCategoryTitle')?.textContent||'',title:$('#positionDayTitle')?.textContent||'',src:$('#calendarPositionImage')?.getAttribute('src')||'',instruction:$('#positionInstruction')?.textContent||'',metaHidden:$('#positionMeta')?.hidden??true,name:$('#positionPoseName')?.textContent||'',description:$('#positionPoseDescription')?.textContent||''}:null;
     return {fields,slots,directAction:activeDirect?.dataset.action||null,scenarioMode:activeScenario?.dataset.mode||null,randomPoseLevels:(()=>{try{return JSON.parse(pairStorage.getItem('sa_random_pose_levels_v1')||'[]')}catch{return []}})(),position,mainTab:document.body.dataset.mainTab||null,activeGame:document.body.dataset.activeGame||null,gameMenu:document.body.dataset.gameMenu==='1'};
   }
-  function applyUI(snap){
+  function applyUI(snap,{applyNavigation=false}={}){
     if(!snap)return;uiApply=true;
     try{
-      // Apply navigation first, so snapshot content lands in the visible game instead of the menu.
-      if(snap.mainTab){
+      // Navigation is synchronized by explicit tab/game/game-menu events.
+      // Normal UI snapshots must NEVER change navigation, otherwise a delayed
+      // snapshot from the other device can bounce a freshly opened game back
+      // to the previous screen. Only an authoritative recovery snapshot
+      // (state-request / reconnect) may restore navigation.
+      if(applyNavigation&&snap.mainTab){
         const currentTab=document.body.dataset.mainTab||null;
         const currentGame=document.body.dataset.activeGame||null;
         const currentMenu=document.body.dataset.gameMenu==='1';
@@ -1877,7 +1881,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
         if(!hostSide)send({type:'state-request',origin:peer?.id||null,ts:Date.now(),needPair:false});
       }finally{setTimeout(()=>isApplying=false,220)}return}
       if(msg?.type==='ui'){uiApply=true;try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}finally{setTimeout(()=>uiApply=false,100)}return}
-      if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot);return}
+      if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot,{applyNavigation:!!msg.authoritative});return}
     });
     c.on('close',()=>{
       conn=null;remoteRole=null;updateRoleStatus(false);
@@ -1920,7 +1924,12 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   });
   $('#copySessionCodeBtn')?.addEventListener('click',async()=>{const t=$('#sessionCode')?.textContent;if(t&&t!=='—'){try{await navigator.clipboard.writeText(t);status('Код скопійовано')}catch{status('Скопіюйте код вручну: '+t)}}});
   $('#leaveSessionBtn')?.addEventListener('click',async()=>{clearReconnect();try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;remoteRole=null;restoring=false;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено');localRole=null;updateRoleStatus(false);await clearSessionMeta()});
-  document.addEventListener('pair:state-saved',e=>{sendPair(e.detail);scheduleUISnapshot(150)});
+  document.addEventListener('pair:state-saved',e=>{
+    // Pair data and navigation are separate channels. Sending a UI snapshot
+    // after every data save caused stale tab/game state to race with explicit
+    // navigation events and visibly throw both players back.
+    sendPair(e.detail);
+  });
   document.addEventListener('pair:profile',()=>sendPair(PairDB.active));
   document.addEventListener('click',e=>{if(!conn?.open||uiApply)return;const interactive=e.target.closest('button,[data-game],.calendar-day,.place-item,input[type=checkbox],select');if(!interactive)return;
     // Game actions have their own deterministic session events. A generic UI
