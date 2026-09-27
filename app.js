@@ -1700,7 +1700,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     document.dispatchEvent(new CustomEvent('session:role-changed',{detail:{role:localRole,remoteRole,connected,restoring}}));
   }
   function send(msg){if(conn?.open)try{conn.send(msg)}catch(e){console.warn('session send',e)}}
-  function sendPair(pair){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap)})}
+  function sendPair(pair,force=false){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(!force&&snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap),authoritative:!!force,ts:Date.now()})}
   function sendUI(kind,payload={}){if(!conn?.open||uiApply)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now()})}
   function replyUI(kind,payload={}){if(!conn?.open)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now(),reply:true})}
   async function saveSessionMeta(mode,sessionCode){
@@ -1767,20 +1767,24 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   }
   function wire(c,hostSide,sessionCode,restored=false){
     if(conn&&conn!==c){try{conn.close()}catch{}}
-    conn=c;isHost=hostSide;$('#leaveSessionBtn').hidden=false;
+    conn=c;isHost=hostSide;lastSent='';$('#leaveSessionBtn').hidden=false;
     c.on('open',async()=>{
       clearReconnect();
       const recoveringThisPage=!!restored;
       restoring=false;
       status(recoveringThisPage?'Сесію відновлено · отримуємо актуальний екран партнера…':'Підключено · синхронізація активна',true);updateRoleStatus(false);
       await saveSessionMeta(hostSide?'host':'guest',sessionCode);
-      send({type:'hello',role:localRole,players:PairDB.active?.players||null,recovering:recoveringThisPage});
+      send({type:'hello',role:localRole,players:PairDB.active?.players||null,recovering:recoveringThisPage,hasPair:!!PairDB.active});
+      if(recoveringThisPage || !PairDB.active){
+        // Після reload АБО на новому пристрої без локальної пари просимо
+        // авторитетний стан у хоста. Це дозволяє приєднатися лише за кодом,
+        // не створюючи/не обираючи пару на другому пристрої заздалегідь.
+        send({type:'state-request',origin:peer?.id||null,ts:Date.now(),needPair:!PairDB.active});
+      }
       if(recoveringThisPage){
-        // Після reload не відправляємо старий локальний UI/профіль.
-        // Просимо пристрій, який залишався онлайн, надіслати актуальний стан.
-        send({type:'state-request',origin:peer?.id||null,ts:Date.now()});
+        // Старий локальний UI не надсилаємо назад партнеру.
       }else{
-        if(isHost&&PairDB.active)sendPair(PairDB.active);
+        if(isHost&&PairDB.active)sendPair(PairDB.active,true);
         sendUI('tab',{which:document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1')||'calendar'});
         const activeGame=document.body.dataset.activeGame||pairStorage.getItem('sa_active_game_v2');
         if(activeGame)sendUI('game',{key:activeGame}); else if((document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1'))==='games')sendUI('game-menu',{});
@@ -1791,25 +1795,46 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       // Ignore reflected UI messages from our own Peer id.
       if(msg?.origin&&peer?.id&&msg.origin===peer.id)return;
       if(msg?.type==='state-request'){
-        // Інша сторона щойно перезавантажилась. Саме цей пристрій є джерелом
-        // актуальної вкладки/гри та прогресу.
-        if(PairDB.active){
-          try{send({type:'pair',pair:JSON.parse(JSON.stringify(PairDB.active))})}catch{}
+        // Новий/перезавантажений пристрій просить актуальний стан.
+        // Хост завжди є джерелом активної пари. Не покладаємося на lastSent:
+        // це НОВЕ з'єднання і пара мусить бути відправлена гарантовано.
+        if(hostSide&&PairDB.active){
+          sendPair(PairDB.active,true);
+        }else if(PairDB.active&&msg.needPair){
+          // Fallback для відновленої сесії, якщо ролі сторін уже помінялися.
+          try{send({type:'pair',pair:JSON.parse(JSON.stringify(PairDB.active)),authoritative:true,ts:Date.now()})}catch{}
         }
         send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true});
         return;
       }
       if(msg?.type==='hello'){
         remoteRole=Number(msg.role);const conflict=remoteRole===localRole;updateRoleStatus(conflict);status(conflict?'Підключено, але є конфлікт ролей':'Підключено · синхронізація активна',!conflict);
-        // Якщо партнер повідомляє, що він після reload, повторно надішлемо
-        // актуальний стан після hello — це робить відновлення стійкішим до гонок.
-        if(msg.recovering){
-          if(PairDB.active){try{send({type:'pair',pair:JSON.parse(JSON.stringify(PairDB.active))})}catch{}}
-          setTimeout(()=>send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true}),80);
+        // На КОЖНЕ нове підключення хост повторно віддає активну пару.
+        // Раніше lastSent міг блокувати цю відправку, тому новий пристрій
+        // залишався на екрані «Оберіть пару» навіть при успішному PeerJS connect.
+        if(hostSide&&PairDB.active){
+          sendPair(PairDB.active,true);
+        }
+        // Для reload додатково віддаємо актуальний UI після застосування пари.
+        if(msg.recovering||msg.hasPair===false){
+          setTimeout(()=>send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true}),120);
         }
         return;
       }
-      if(msg?.type==='pair'&&msg.pair){isApplying=true;try{lastSent=JSON.stringify(msg.pair);await PairDB.applyRemote(msg.pair);const g=$('#pairGate'),sh=$('#appShell'),lab=$('#activePairLabel');if(g)g.hidden=true;if(sh)sh.hidden=false;if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');updateRoleStatus(remoteRole===localRole);status(remoteRole===localRole?'Синхронізовано · конфлікт ролей':'Синхронізовано',remoteRole!==localRole)}finally{setTimeout(()=>isApplying=false,220)}return}
+      if(msg?.type==='pair'&&msg.pair){isApplying=true;try{
+        lastSent=JSON.stringify(msg.pair);
+        await PairDB.applyRemote(msg.pair);
+        const g=$('#pairGate'),sh=$('#appShell'),lab=$('#activePairLabel');
+        if(g)g.hidden=true;
+        if(sh)sh.hidden=false;
+        if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');
+        updateRoleStatus(remoteRole===localRole);
+        status(remoteRole===localRole?'Синхронізовано · конфлікт ролей':'Синхронізовано',remoteRole!==localRole);
+        document.dispatchEvent(new CustomEvent('session:pair-ready',{detail:{pair:PairDB.active,role:localRole,remoteRole}}));
+        // Після отримання пари підтягуємо авторитетний екран хоста ще раз,
+        // щоб новий пристрій одразу міг перейти в календар/ігри/покупки.
+        if(!hostSide)send({type:'state-request',origin:peer?.id||null,ts:Date.now(),needPair:false});
+      }finally{setTimeout(()=>isApplying=false,220)}return}
       if(msg?.type==='ui'){uiApply=true;try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}finally{setTimeout(()=>uiApply=false,100)}return}
       if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot);return}
     });
@@ -2199,13 +2224,19 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   function read(){if(runtime)return runtime;try{runtime=JSON.parse(pairStorage.getItem(KEY)||'null')}catch{runtime=null}return runtime}
   function store(v){runtime=v?JSON.parse(JSON.stringify(v)):null;if(v)pairStorage.setItem(KEY,JSON.stringify(v));else pairStorage.removeItem(KEY);render()}
   function notify(msg){let el=document.getElementById('toast');if(!el){el=document.createElement('div');el.id='planningToast';el.className='toast';document.body.appendChild(el)}el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2400)}
-  function describe(p){if(p.type==='purchase-plan')return `${p.value?'Додати у плани':'Прибрати з планів'}: ${p.label||'товар'}`;if(p.type==='place-plan')return `${p.value?'Запланувати місце':'Прибрати місце з планів'}: ${p.label||'місце'}`;return p.label||'Зміна плану'}
-  function render(){if(!modal)return;const p=read();if(!p){modal.hidden=true;return}modal.hidden=false;const me=role(),other=partner(),names=players().map(x=>x?.name||'Гравець');const approvals=Array.isArray(p.approvals)?p.approvals:[false,false];if(icon)icon.textContent=p.type==='place-plan'?'📍':'🛍️';if(title)title.textContent=p.value?'Погодити планування?':'Погодити зміну плану?';if(summary)summary.textContent=describe(p);if(selfVote){selfVote.querySelector('span').textContent=`Ви — ${names[me]||''}`;selfVote.querySelector('strong').textContent=approvals[me]?'Погоджено ✓':'Очікує';selfVote.classList.toggle('approved',!!approvals[me])}if(partnerVote){partnerVote.querySelector('span').textContent=`Ваш партнер — ${names[other]||''}`;partnerVote.querySelector('strong').textContent=approvals[other]?'Погоджено ✓':'Очікує';partnerVote.classList.toggle('approved',!!approvals[other])}if(agree){agree.disabled=!!approvals[me];agree.textContent=approvals[me]?'Ви погодились ✓':'Погодитись'}if(hint)hint.textContent=approvals[me]&&!approvals[other]?'Очікуємо рішення партнера…':(!approvals[me]&&approvals[other]?'Партнер уже погодився. Потрібне ваше підтвердження.':'Для зміни плану мають погодитися обидва.')}
-  function apply(p){if(!p)return;if(p.type==='purchase-plan'){let all=[];try{all=JSON.parse(pairStorage.getItem('sa_desired_purchases_v1')||'[]')}catch{};const item=Array.isArray(all)?all.find(x=>x.id===p.targetId):null;if(item){item.planned=!!p.value;item.plannedBy=p.value?Number(p.initiator):null;item.plannedAt=p.value?Date.now():null;if(p.value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null}pairStorage.setItem('sa_desired_purchases_v1',JSON.stringify(all));PairDB.save?.();document.dispatchEvent(new CustomEvent('purchases:render'));document.dispatchEvent(new CustomEvent('progress:changed'))}}else if(p.type==='place-plan'){let planned=[];try{planned=JSON.parse(pairStorage.getItem('sa_games_places_planned_v1')||'[]')}catch{};const set=new Set(Array.isArray(planned)?planned:[]);if(p.value)set.add(p.targetId);else set.delete(p.targetId);pairStorage.setItem('sa_games_places_planned_v1',JSON.stringify([...set]));PairDB.save?.();document.dispatchEvent(new CustomEvent('progress:changed'));const btn=document.getElementById('placesTabBtn');if(btn&&btn.classList.contains('active'))btn.dispatchEvent(new Event('noop'))}
+  function describe(p){if(p.type==='purchase-plan')return `${p.value?'Додати у плани':'Прибрати з планів'}: ${p.label||'товар'}`;if(p.type==='place-plan')return `${p.value?'Запланувати місце':'Прибрати місце з планів'}: ${p.label||'місце'}`;if(p.type==='game-debt-clear')return 'Очистити весь список бажань за результатами ігор';return p.label||'Зміна плану'}
+  function render(){if(!modal)return;const p=read();if(!p){modal.hidden=true;return}modal.hidden=false;const me=role(),other=partner(),names=players().map(x=>x?.name||'Гравець');const approvals=Array.isArray(p.approvals)?p.approvals:[false,false];if(icon)icon.textContent=p.type==='place-plan'?'📍':p.type==='game-debt-clear'?'🧹':'🛍️';if(title)title.textContent=p.type==='game-debt-clear'?'Очистити бажання?':(p.value?'Погодити планування?':'Погодити зміну плану?');if(summary)summary.textContent=describe(p);if(selfVote){selfVote.querySelector('span').textContent=`Ви — ${names[me]||''}`;selfVote.querySelector('strong').textContent=approvals[me]?'Погоджено ✓':'Очікує';selfVote.classList.toggle('approved',!!approvals[me])}if(partnerVote){partnerVote.querySelector('span').textContent=`Ваш партнер — ${names[other]||''}`;partnerVote.querySelector('strong').textContent=approvals[other]?'Погоджено ✓':'Очікує';partnerVote.classList.toggle('approved',!!approvals[other])}if(agree){agree.disabled=!!approvals[me];agree.textContent=approvals[me]?'Ви погодились ✓':'Погодитись'}if(hint)hint.textContent=approvals[me]&&!approvals[other]?'Очікуємо рішення партнера…':(!approvals[me]&&approvals[other]?'Партнер уже погодився. Потрібне ваше підтвердження.':'Для зміни плану мають погодитися обидва.')}
+  function apply(p){if(!p)return;if(p.type==='purchase-plan'){let all=[];try{all=JSON.parse(pairStorage.getItem('sa_desired_purchases_v1')||'[]')}catch{};const item=Array.isArray(all)?all.find(x=>x.id===p.targetId):null;if(item){item.planned=!!p.value;item.plannedBy=p.value?Number(p.initiator):null;item.plannedAt=p.value?Date.now():null;if(p.value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null}pairStorage.setItem('sa_desired_purchases_v1',JSON.stringify(all));PairDB.save?.();document.dispatchEvent(new CustomEvent('purchases:render'));document.dispatchEvent(new CustomEvent('progress:changed'))}}else if(p.type==='place-plan'){let planned=[];try{planned=JSON.parse(pairStorage.getItem('sa_games_places_planned_v1')||'[]')}catch{};const set=new Set(Array.isArray(planned)?planned:[]);if(p.value)set.add(p.targetId);else set.delete(p.targetId);pairStorage.setItem('sa_games_places_planned_v1',JSON.stringify([...set]));PairDB.save?.();document.dispatchEvent(new CustomEvent('progress:changed'));const btn=document.getElementById('placesTabBtn');if(btn&&btn.classList.contains('active'))btn.dispatchEvent(new Event('noop'))}else if(p.type==='game-debt-clear'){pairStorage.setItem('sa_game_wish_debts_v1','[]');PairDB.save?.();document.dispatchEvent(new CustomEvent('progress:changed'));}
     document.dispatchEvent(new CustomEvent('pair:changed'));
   }
   function propose(data){if(window.requireSyncedPartnerSession&&!window.requireSyncedPartnerSession())return;const existing=read();if(existing){render();notify('Спочатку завершіть поточне погодження');return}const p={id:'plan_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),type:data.type,targetId:data.targetId,label:data.label||'',value:!!data.value,initiator:role(),approvals:[false,false],createdAt:Date.now()};store(p);window.SessionSync?.replyUI?.('planning-action',{action:'propose',proposal:p})}
   function vote(isAgree,remoteRole=null,proposalId=null,sync=true){const p=read();if(!p||proposalId&&p.id!==proposalId)return;const r=remoteRole===0||remoteRole===1?remoteRole:role();if(!isAgree){const id=p.id;store(null);if(sync)window.SessionSync?.replyUI?.('planning-action',{action:'reject',proposalId:id,role:r});notify('Планування скасовано');return}p.approvals ||= [false,false];p.approvals[r]=true;store(p);if(sync)window.SessionSync?.replyUI?.('planning-action',{action:'vote',proposalId:p.id,role:r});if(p.approvals[0]&&p.approvals[1]){apply(p);store(null);notify('План погоджено ✓')}}
+  const clearDebtButtons=[document.getElementById('clearPageGameDebtsBtn'),document.getElementById('clearDialogGameDebtsBtn')].filter(Boolean);
+  clearDebtButtons.forEach(btn=>btn.addEventListener('click',()=>{
+    let rows=[];try{rows=JSON.parse(pairStorage.getItem('sa_game_wish_debts_v1')||'[]')}catch{rows=[]}
+    if(!Array.isArray(rows)||!rows.length){notify('Список бажань уже порожній');return}
+    propose({type:'game-debt-clear',targetId:'all-game-debts',label:'Бажання за результатами ігор',value:true});
+  }));
   agree?.addEventListener('click',()=>vote(true));reject?.addEventListener('click',()=>vote(false));
   document.addEventListener('session:remote-ui',e=>{const m=e.detail||{};if(m.kind!=='planning-action')return;const x=m.payload||{};if(x.action==='propose'&&x.proposal){store(x.proposal);return}if(x.action==='vote'){vote(true,Number(x.role),x.proposalId,false);return}if(x.action==='reject'){const p=read();if(p?.id===x.proposalId){store(null);notify('Партнер відхилив планування')}}});
   document.addEventListener('pair:changed',render);
