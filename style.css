@@ -2146,3 +2146,217 @@ img,canvas,svg{max-width:100%}
     object-fit:cover!important;
   }
 }
+
+
+/* v68: redesigned pair/profile/session page */
+.pair-gate{
+  background:
+    radial-gradient(70rem 40rem at 50% -5%, rgba(255,88,150,.18), transparent 52%),
+    radial-gradient(55rem 28rem at 100% 100%, rgba(113,85,255,.14), transparent 40%),
+    #0b0a0f!important;
+  padding:22px!important;
+}
+.pair-card{
+  width:min(980px,100%)!important;
+  padding:30px!important;
+  border-radius:32px!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  background:
+    radial-gradient(120% 120% at 0% 0%, rgba(255,91,149,.07), transparent 32%),
+    radial-gradient(120% 120% at 100% 100%, rgba(111,92,255,.08), transparent 34%),
+    linear-gradient(145deg,#18131a 0%, #110f15 100%)!important;
+  box-shadow:0 28px 80px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.04)!important;
+}
+.pair-card > .eyebrow{margin-bottom:14px!important}
+.pair-card h1{
+  margin:0 0 10px!important;
+  font-size:50px!important;
+  line-height:1.05!important;
+}
+.pair-card > p{
+  max-width:720px;
+  margin:0 0 20px!important;
+  color:#c8bfca!important;
+  font-size:18px!important;
+  line-height:1.5!important;
+}
+.pair-list{
+  gap:12px!important;
+  margin:18px 0 24px!important;
+}
+.pair-list-empty{
+  padding:20px!important;
+  border-radius:18px!important;
+  border:1px dashed rgba(255,255,255,.14)!important;
+  background:rgba(255,255,255,.02)!important;
+}
+.pair-row{
+  padding:14px 16px!important;
+  border-radius:20px!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  background:linear-gradient(145deg, rgba(255,255,255,.03), rgba(255,255,255,.015))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 10px 22px rgba(0,0,0,.12)!important;
+  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.pair-row:hover{
+  transform:translateY(-1px);
+  border-color:rgba(255,131,180,.18)!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 14px 26px rgba(0,0,0,.16)!important;
+}
+.pair-select{padding:4px 2px!important}
+.pair-select strong{font-size:26px!important;line-height:1.15!important}
+.pair-select small{font-size:14px!important;color:#c1b7c3!important}
+.pair-delete{
+  width:48px;height:48px;min-width:48px!important;
+  border-radius:15px!important;
+  border:1px solid rgba(255,130,171,.16)!important;
+  background:linear-gradient(145deg,#2a1c25,#20161d)!important;
+}
+
+.pair-create,
+.pair-session-card,
+.pair-backup{
+  margin-top:18px!important;
+  padding:22px!important;
+  border-radius:24px!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  background:linear-gradient(145deg, rgba(255,255,255,.035), rgba(255,255,255,.018))!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 14px 28px rgba(0,0,0,.12)!important;
+}
+.pair-create{border-top:none!important;padding-top:22px!important}
+.pair-create h2,
+.pair-session-card h2,
+.pair-backup h2{
+  margin:0 0 8px!important;
+  font-size:34px!important;
+  line-height:1.12!important;
+}
+.pair-session-card p,
+.pair-backup p{
+  margin:0 0 16px!important;
+  color:#c8bfca!important;
+  font-size:15px!important;
+  line-height:1.55!important;
+}
+.pair-create-grid,
+.session-role-grid{
+  gap:12px!important;
+}
+.pair-create-grid{
+  grid-template-columns:repeat(4, minmax(0,1fr))!important;
+  margin:16px 0 14px!important;
+}
+.pair-create-grid label,
+.session-role-grid label{
+  gap:8px!important;
+  font-size:12px!important;
+  color:#d0c4cf!important;
+  font-weight:800!important;
+  letter-spacing:.03em;
+}
+.pair-create-grid input,
+.pair-create-grid select,
+.session-role-grid select,
+.session-join-row input{
+  min-height:50px!important;
+  border-radius:15px!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+  background:linear-gradient(145deg,#141118,#0f0d12)!important;
+  padding:0 14px!important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025)!important;
+}
+#createPairBtn{
+  min-width:210px;
+  min-height:50px!important;
+  border-radius:16px!important;
+  box-shadow:0 12px 28px rgba(255,83,151,.18);
+}
+.session-role-grid{
+  margin:14px 0 16px!important;
+}
+.session-actions{
+  gap:12px!important;
+}
+#createSessionBtn{
+  min-height:50px!important;
+  border-radius:16px!important;
+  box-shadow:0 12px 28px rgba(255,83,151,.16);
+}
+.session-join-row{
+  grid-template-columns:minmax(0,1fr) 160px!important;
+  gap:12px!important;
+}
+.session-join-row .btn{
+  min-height:50px!important;
+  border-radius:16px!important;
+}
+.session-status,
+.session-role-status{
+  margin-top:12px!important;
+  padding:12px 14px!important;
+  border-radius:15px!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  background:rgba(255,255,255,.03)!important;
+  font-size:14px!important;
+}
+.session-status.connected{
+  border-color:rgba(116,224,163,.22)!important;
+  background:rgba(68,147,100,.11)!important;
+  color:#b8efc9!important;
+}
+.session-code-box{
+  margin-top:14px!important;
+  padding:14px 16px!important;
+  border-radius:16px!important;
+  border:1px solid rgba(255,255,255,.08)!important;
+  background:linear-gradient(145deg,#211a23,#171319)!important;
+}
+.session-code-box span{color:#c7bcc9!important;font-size:13px!important}
+.session-code-box strong{font-size:30px!important;letter-spacing:.06em!important}
+#leaveSessionBtn{
+  margin-top:12px!important;
+  padding-left:0!important;
+}
+.pair-backup-actions{
+  display:grid!important;
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  gap:12px!important;
+}
+.pair-backup-actions .btn{
+  min-height:50px!important;
+  border-radius:16px!important;
+  min-width:0!important;
+}
+
+@media(max-width:960px){
+  .pair-card{padding:24px!important;border-radius:28px!important}
+  .pair-card h1{font-size:42px!important}
+  .pair-card > p{font-size:16px!important}
+  .pair-create h2,.pair-session-card h2,.pair-backup h2{font-size:28px!important}
+  .pair-create-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:640px){
+  .pair-gate{padding:10px!important}
+  .pair-card{padding:16px!important;border-radius:22px!important}
+  .pair-card h1{font-size:34px!important;line-height:1.08!important}
+  .pair-card > p{font-size:14px!important;line-height:1.45!important;margin-bottom:16px!important}
+  .pair-row{padding:12px!important;border-radius:18px!important}
+  .pair-select strong{font-size:20px!important}
+  .pair-select small{font-size:12px!important}
+  .pair-delete{width:44px;height:44px;min-width:44px!important}
+  .pair-create,
+  .pair-session-card,
+  .pair-backup{padding:16px!important;border-radius:20px!important;margin-top:14px!important}
+  .pair-create h2,.pair-session-card h2,.pair-backup h2{font-size:24px!important}
+  .pair-create-grid,
+  .session-role-grid{grid-template-columns:1fr!important;gap:10px!important}
+  .pair-create-grid input,
+  .pair-create-grid select,
+  .session-role-grid select,
+  .session-join-row input{min-height:48px!important;border-radius:14px!important}
+  #createPairBtn,#createSessionBtn,.session-join-row .btn,.pair-backup-actions .btn{width:100%!important}
+  .session-join-row{grid-template-columns:1fr!important;gap:10px!important}
+  .session-code-box{display:grid!important;gap:8px!important}
+  .session-code-box strong{font-size:24px!important;word-break:break-word!important}
+  .pair-backup-actions{grid-template-columns:1fr!important}
+}
