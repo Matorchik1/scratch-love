@@ -1501,6 +1501,14 @@ const pairStorage={
   function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); refreshPendingResult(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','purchases','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','purchases','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(purchasesSection)purchasesSection.hidden=true; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
   document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}refreshPendingResult();});
+  document.addEventListener('session:pair-ready',()=>{
+    // Rebuild the games/navigation UI after a remote pair becomes the active
+    // local profile. This is especially important on the joining device, where
+    // the games module may have initialised before PairDB.active existed.
+    refreshPairUI();
+    syncPlayers();
+    refreshRollPermissions();
+  });
   
   document.addEventListener('session:remote-ui',e=>{
     const m=e.detail||{};
@@ -1776,7 +1784,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     }finally{setTimeout(()=>uiApply=false,100)}
   }
   function scheduleUISnapshot(delay=140){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{if(conn?.open&&!uiApply)send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now()})},delay)}
-  window.SessionSync={sendUI,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open},get ready(){return !!conn?.open&&!restoring&&(localRole===0||localRole===1)&&(remoteRole===0||remoteRole===1)&&remoteRole!==localRole}};
+  window.SessionSync={sendUI,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open},get ready(){return !!conn?.open&&!restoring&&!!PairDB.active&&(localRole===0||localRole===1)&&(remoteRole===0||remoteRole===1)&&remoteRole!==localRole}};
 
   function clearReconnect(){clearTimeout(reconnectTimer);reconnectTimer=null;reconnectAttempts=0}
   function scheduleGuestReconnect(sessionCode){
@@ -1847,13 +1855,23 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       if(msg?.type==='pair'&&msg.pair){isApplying=true;try{
         lastSent=JSON.stringify(msg.pair);
         await PairDB.applyRemote(msg.pair);
+
+        // A freshly joined device can receive the pair before the peer's hello
+        // has finished propagating. For a two-player pair the opposite role is
+        // deterministic, so don't leave SessionSync.ready=false just because
+        // remoteRole is temporarily missing.
+        if((localRole===0||localRole===1)&&!(remoteRole===0||remoteRole===1)){
+          remoteRole=localRole===0?1:0;
+        }
+
         const g=$('#pairGate'),sh=$('#appShell'),lab=$('#activePairLabel');
         if(g)g.hidden=true;
         if(sh)sh.hidden=false;
         if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');
-        updateRoleStatus(remoteRole===localRole);
-        status(remoteRole===localRole?'Синхронізовано · конфлікт ролей':'Синхронізовано',remoteRole!==localRole);
-        document.dispatchEvent(new CustomEvent('session:pair-ready',{detail:{pair:PairDB.active,role:localRole,remoteRole}}));
+        const conflict=remoteRole===localRole;
+        updateRoleStatus(conflict);
+        status(conflict?'Синхронізовано · конфлікт ролей':'Синхронізовано · можна грати',!conflict);
+        document.dispatchEvent(new CustomEvent('session:pair-ready',{detail:{pair:PairDB.active,role:localRole,remoteRole,ready:!conflict}}));
         // Після отримання пари підтягуємо авторитетний екран хоста ще раз,
         // щоб новий пристрій одразу міг перейти в календар/ігри/покупки.
         if(!hostSide)send({type:'state-request',origin:peer?.id||null,ts:Date.now(),needPair:false});
