@@ -1558,18 +1558,19 @@ const pairStorage={
     pairs.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).forEach(p=>{
       const row=document.createElement('div');row.className='pair-row';
       const btn=document.createElement('button');btn.className='pair-select';btn.type='button';btn.innerHTML=`<strong>${pairLabel(p)}</strong><small>${p.players[0].gender==='male'?'Чоловік':'Жінка'} + ${p.players[1].gender==='male'?'Чоловік':'Жінка'}</small>`;
-      btn.onclick=async()=>{await PairDB.activate(p.id);showApp()};
+      btn.onclick=async()=>{await PairDB.activate(p.id);showApp(true)};
       const del=document.createElement('button');del.className='pair-delete';del.type='button';del.textContent='×';del.title='Видалити пару';del.onclick=async()=>{if(confirm(`Видалити пару “${pairLabel(p)}” та весь її прогрес?`)){await PairDB.remove(p.id);await renderList();if(!PairDB.active)showGate()}};
       row.append(btn,del);listEl.appendChild(row);
     });
   }
-  function showApp(){const p=PairDB.active;if(!p)return;gate.hidden=true;shell.hidden=false;label.textContent=pairLabel(p);}
-  function showGate(){shell.hidden=true;gate.hidden=false;renderList()}
-  $('#switchPairBtn')?.addEventListener('click',showGate);
-  $('#openSessionBtn')?.addEventListener('click',()=>{showGate();setTimeout(()=>document.querySelector('.pair-session-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)});
+  let manualGateOpen=false;
+  function showApp(force=false){const p=PairDB.active;if(!p)return;if(manualGateOpen&&!force)return;manualGateOpen=false;gate.hidden=true;shell.hidden=false;label.textContent=pairLabel(p);}
+  function showGate(manual=true){manualGateOpen=!!manual;shell.hidden=true;gate.hidden=false;renderList()}
+  $('#switchPairBtn')?.addEventListener('click',()=>showGate(true));
+  $('#openSessionBtn')?.addEventListener('click',()=>{showGate(true);setTimeout(()=>document.querySelector('.pair-session-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)});
   $('#createPairBtn')?.addEventListener('click',async()=>{
     const p1=$('#newPairP1').value.trim()||'Гравець 1', p2=$('#newPairP2').value.trim()||'Гравець 2';
-    await PairDB.create(p1,$('#newPairG1').value,p2,$('#newPairG2').value); showApp();
+    await PairDB.create(p1,$('#newPairG1').value,p2,$('#newPairG2').value); showApp(true);
   });
   $('#exportDbBtn')?.addEventListener('click',async()=>{
     try{
@@ -1715,7 +1716,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
 (() => {
   'use strict';
   const $=s=>document.querySelector(s);
-  let peer=null,conn=null,isApplying=false,lastSent='',localRole=null,remoteRole=null,isHost=false,uiApply=false,uiTimer=null;
+  let peer=null,conn=null,isApplying=false,lastSent='',pendingPairSend=null,localRole=null,remoteRole=null,isHost=false,uiApply=false,uiTimer=null;
   let reconnectTimer=null, reconnectAttempts=0, restoring=false;
   const SESSION_META='p2p_session_v2';
   const status=(t,ok=false)=>{const e=$('#sessionStatus');if(e){e.textContent=t;e.classList.toggle('connected',ok)}};
@@ -1731,8 +1732,19 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     document.dispatchEvent(new CustomEvent('session:role-changed',{detail:{role:localRole,remoteRole,connected,restoring}}));
   }
   function send(msg){if(conn?.open)try{conn.send(msg)}catch(e){console.warn('session send',e)}}
-  function sendPair(pair,force=false){if(!conn?.open||isApplying||!pair)return;const snap=JSON.stringify(pair);if(!force&&snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap),authoritative:!!force,ts:Date.now()})}
-  function sendUI(kind,payload={}){if(!conn?.open||uiApply)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now()})}
+  function sendPair(pair,force=false){
+    if(!conn?.open||!pair)return;
+    // Never lose a local mutation just because a remote pair is currently being applied.
+    // Keep the newest local snapshot and flush it immediately after applyRemote finishes.
+    if(isApplying){pendingPairSend={pair:JSON.parse(JSON.stringify(pair)),force:!!force};return;}
+    const snap=JSON.stringify(pair);if(!force&&snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap),authoritative:!!force,ts:Date.now()})
+  }
+  function sendUI(kind,payload={}){
+    if(!conn?.open)return;
+    // Do not drop a real local click merely because a remote UI event was applied
+    // a few milliseconds earlier. Remote handlers already call their actions with sync=false.
+    send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now()})
+  }
   function replyUI(kind,payload={}){if(!conn?.open)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now(),reply:true})}
   async function saveSessionMeta(mode,sessionCode){
     try{await PairDB.setMeta(SESSION_META,{mode,code:sessionCode,role:localRole,pairId:PairDB.active?.id||null,updatedAt:Date.now()})}catch(e){console.warn('session meta save',e)}
@@ -1802,7 +1814,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   }
   function wire(c,hostSide,sessionCode,restored=false){
     if(conn&&conn!==c){try{conn.close()}catch{}}
-    conn=c;isHost=hostSide;lastSent='';$('#leaveSessionBtn').hidden=false;
+    conn=c;isHost=hostSide;lastSent='';pendingPairSend=null;$('#leaveSessionBtn').hidden=false;
     c.on('open',async()=>{
       clearReconnect();
       const recoveringThisPage=!!restored;
@@ -1879,7 +1891,12 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
         // Після отримання пари підтягуємо авторитетний екран хоста ще раз,
         // щоб новий пристрій одразу міг перейти в календар/ігри/покупки.
         if(!hostSide)send({type:'state-request',origin:peer?.id||null,ts:Date.now(),needPair:false});
-      }finally{setTimeout(()=>isApplying=false,220)}return}
+      }finally{
+        setTimeout(()=>{
+          isApplying=false;
+          if(pendingPairSend){const queued=pendingPairSend;pendingPairSend=null;sendPair(queued.pair,queued.force);}
+        },80);
+      }return}
       if(msg?.type==='ui'){uiApply=true;try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}finally{setTimeout(()=>uiApply=false,100)}return}
       if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot,{applyNavigation:!!msg.authoritative});return}
     });
@@ -1923,7 +1940,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     createGuest(id,Number(roleValue),false);
   });
   $('#copySessionCodeBtn')?.addEventListener('click',async()=>{const t=$('#sessionCode')?.textContent;if(t&&t!=='—'){try{await navigator.clipboard.writeText(t);status('Код скопійовано')}catch{status('Скопіюйте код вручну: '+t)}}});
-  $('#leaveSessionBtn')?.addEventListener('click',async()=>{clearReconnect();try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;remoteRole=null;restoring=false;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено');localRole=null;updateRoleStatus(false);await clearSessionMeta()});
+  $('#leaveSessionBtn')?.addEventListener('click',async()=>{clearReconnect();try{conn?.close();peer?.destroy()}catch{}conn=null;peer=null;remoteRole=null;pendingPairSend=null;restoring=false;$('#sessionCodeBox').hidden=true;$('#leaveSessionBtn').hidden=true;status('Не підключено');localRole=null;updateRoleStatus(false);await clearSessionMeta()});
   document.addEventListener('pair:state-saved',e=>{
     // Pair data and navigation are separate channels. Sending a UI snapshot
     // after every data save caused stale tab/game state to race with explicit
