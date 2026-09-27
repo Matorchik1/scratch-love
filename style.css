@@ -2713,3 +2713,102 @@ img,canvas,svg{max-width:100%}
   .main-tabs{left:8px;right:8px;bottom:8px;padding:7px!important;gap:5px!important}
   .main-tab{min-height:54px!important;font-size:10px!important;padding:7px 2px!important}
 }
+
+
+/* v71: collapsible pair creation + full-width mobile selects */
+.pair-create{
+  overflow:hidden!important;
+}
+.pair-create-summary{
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:56px;
+  cursor:pointer;
+  user-select:none;
+  font-size:22px;
+  line-height:1.2;
+  font-weight:900;
+  color:#fff;
+}
+.pair-create-summary::-webkit-details-marker{display:none}
+.pair-create-summary::marker{display:none}
+.pair-create-chevron{
+  width:34px;
+  height:34px;
+  flex:0 0 34px;
+  display:grid;
+  place-items:center;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(255,255,255,.04);
+  color:#f0c6d9;
+  font-size:20px;
+  transition:transform .18s ease, background .18s ease;
+}
+.pair-create[open] .pair-create-chevron{
+  transform:rotate(180deg);
+  background:rgba(255,89,151,.08);
+}
+.pair-create-body{
+  padding-top:14px;
+  border-top:1px solid rgba(255,255,255,.06);
+}
+.pair-create:not([open]){
+  padding-top:0!important;
+  padding-bottom:0!important;
+}
+.pair-create:not([open]) .pair-create-summary{
+  min-height:64px;
+}
+
+@media(max-width:640px){
+  .pair-create-summary{
+    min-height:54px!important;
+    font-size:20px!important;
+  }
+  .pair-create:not([open]) .pair-create-summary{min-height:54px!important}
+  .pair-create-body{padding-top:12px}
+
+  .pair-create-grid,
+  .session-role-grid{
+    width:100%!important;
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+  .pair-create-grid label,
+  .session-role-grid label{
+    width:100%!important;
+    min-width:0!important;
+  }
+  .pair-create-grid input,
+  .pair-create-grid select,
+  .session-role-grid select{
+    display:block!important;
+    width:100%!important;
+    max-width:none!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+    min-height:52px!important;
+    padding-left:14px!important;
+    padding-right:38px!important;
+    font-size:16px!important;
+  }
+  .pair-create-grid select,
+  .session-role-grid select{
+    appearance:auto!important;
+    -webkit-appearance:menulist!important;
+  }
+}
+@media(max-width:390px){
+  .pair-create-summary{font-size:18px!important}
+  .pair-create-chevron{width:32px;height:32px;flex-basis:32px}
+}
+
+
+/* v72: shared clear action for game-result wishes */
+.section-head-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}
+.compact-clear-btn{min-height:32px;padding:5px 9px!important;border-radius:10px!important;border:1px solid rgba(255,93,113,.14)!important;background:rgba(255,73,99,.04)!important;font-size:11px!important;font-weight:800!important}
+.compact-clear-btn:hover{background:rgba(255,73,99,.09)!important;border-color:rgba(255,93,113,.28)!important}
+@media(max-width:520px){.section-head-actions{gap:6px}.compact-clear-btn{min-height:30px;padding:4px 8px!important;font-size:10px!important}}
