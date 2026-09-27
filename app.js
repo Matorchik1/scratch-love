@@ -1725,11 +1725,12 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   document.addEventListener('pair:changed',()=>{renderSecret();renderBattle()});document.addEventListener('session:role-changed',()=>{renderSecret();renderBattle()});renderSecret();
 })();
 
-// --- P2P session sync v34: deterministic game events + auto restore ---
+// --- P2P session sync v80: host-coordinated state + deterministic navigation ---
 (() => {
   'use strict';
   const $=s=>document.querySelector(s);
-  let peer=null,conn=null,isApplying=false,lastSent='',pendingPairSend=null,localRole=null,remoteRole=null,isHost=false,uiApply=false,uiTimer=null,pendingRemoteNav=null,navClock=0,navVersion={clock:0,origin:''};
+  let peer=null,conn=null,isApplying=false,lastSent='',pendingPairSend=null,localRole=null,remoteRole=null,isHost=false,uiApply=false,uiTimer=null,pendingRemoteNav=null,navClock=0,navVersion={clock:0,origin:''},canonicalNavSeq=0,lastAppliedNavSeq=0;
+  let actionSeq=0; const seenRemoteActions=new Set();
   let reconnectTimer=null, reconnectAttempts=0, restoring=false;
   const SESSION_META='p2p_session_v2';
   const status=(t,ok=false)=>{const e=$('#sessionStatus');if(e){e.textContent=t;e.classList.toggle('connected',ok)}};
@@ -1747,51 +1748,57 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   function send(msg){if(conn?.open)try{conn.send(msg)}catch(e){console.warn('session send',e)}}
   function sendPair(pair,force=false){
     if(!conn?.open||!pair)return;
-    // Never lose a local mutation just because a remote pair is currently being applied.
-    // Keep the newest local snapshot and flush it immediately after applyRemote finishes.
+    // v80: the host is the single coordinator for persistent pair state.
+    // A guest submits its newest local state to the host; only the host broadcasts
+    // the canonical pair back. This prevents two full-state snapshots from
+    // overwriting each other back and forth on phone/desktop connections.
     if(isApplying){pendingPairSend={pair:JSON.parse(JSON.stringify(pair)),force:!!force};return;}
-    const snap=JSON.stringify(pair);if(!force&&snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap),authoritative:!!force,ts:Date.now()})
+    const snap=JSON.stringify(pair);if(!force&&snap===lastSent)return;lastSent=snap;
+    if(isHost) send({type:'pair',pair:JSON.parse(snap),authoritative:true,ts:Date.now()});
+    else send({type:'pair-update',pair:JSON.parse(snap),ts:Date.now()});
   }
   const NAV_KINDS=new Set(['navigate','tab','game','game-menu']);
-  function navTupleNewer(a,b){
-    const ac=Number(a?.clock)||0,bc=Number(b?.clock)||0;
-    if(ac!==bc)return ac>bc;
-    return String(a?.origin||'')>String(b?.origin||'');
+  function currentNavigationPayload(){
+    const tab=document.body.dataset.mainTab||'calendar';
+    const activeGame=document.body.dataset.activeGame||null;
+    const gameMenu=document.body.dataset.gameMenu==='1';
+    return {tab,view:tab==='games'?(activeGame&&!gameMenu?'game':'menu'):null,game:tab==='games'&&activeGame&&!gameMenu?activeGame:null};
   }
   function sendUI(kind,payload={}){
     if(!conn?.open)return;
-    const msg={type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now()};
-    if(NAV_KINDS.has(kind)){
-      navClock+=1;
-      msg.navClock=navClock;
-      navVersion={clock:navClock,origin:String(peer?.id||'')};
-    }
-    // Do not drop a real local click merely because a remote UI event was applied
-    // a few milliseconds earlier. Remote handlers already call their actions with sync=false.
-    send(msg)
+    // Navigation is coordinated separately below. All other actions keep a
+    // monotonically increasing sender id so reconnect/duplicate delivery cannot
+    // execute the same click twice.
+    if(NAV_KINDS.has(kind)){ sendNavigation(payload); return; }
+    actionSeq+=1;
+    send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now(),actionSeq});
   }
   let navSendTimer=null;
-  function sendNavigation(){
+  function broadcastCanonicalNavigation(payload=currentNavigationPayload(),applyLocal=false){
+    if(!conn?.open||!isHost)return;
+    canonicalNavSeq+=1;
+    const msg={type:'nav-state',payload,seq:canonicalNavSeq,origin:peer?.id||null,ts:Date.now()};
+    lastAppliedNavSeq=canonicalNavSeq;
+    if(applyLocal) dispatchRemoteUI({kind:'navigate',payload,origin:msg.origin,navSeq:canonicalNavSeq});
+    send(msg);
+  }
+  function sendNavigation(explicitPayload=null){
     if(!conn?.open)return;
-    // Several UI helpers may run during one click (tab -> game/menu). Collapse
-    // them into ONE final navigation message so the partner never sees the
-    // intermediate state and cannot bounce between screens.
     clearTimeout(navSendTimer);
     navSendTimer=setTimeout(()=>{
       if(!conn?.open)return;
-      const tab=document.body.dataset.mainTab||'calendar';
-      const activeGame=document.body.dataset.activeGame||null;
-      const gameMenu=document.body.dataset.gameMenu==='1';
-      const payload={tab,view:tab==='games'?(activeGame&&!gameMenu?'game':'menu'):null,game:tab==='games'&&activeGame&&!gameMenu?activeGame:null};
-      sendUI('navigate',payload);
-    },0);
+      const payload=(explicitPayload&&explicitPayload.tab)?explicitPayload:currentNavigationPayload();
+      if(isHost) broadcastCanonicalNavigation(payload,false);
+      else send({type:'nav-intent',payload,origin:peer?.id||null,ts:Date.now()});
+    },20);
   }
   function acceptRemoteNav(msg){
-    if(!NAV_KINDS.has(msg?.kind))return true;
-    const incoming={clock:Number(msg.navClock)||0,origin:String(msg.origin||'')};
-    navClock=Math.max(navClock,incoming.clock);
-    if(!navTupleNewer(incoming,navVersion))return false;
-    navVersion=incoming;
+    // Legacy helper retained for old peers. v80 uses host-issued nav-state.
+    if(Number(msg?.navSeq)>0){
+      const seq=Number(msg.navSeq);
+      if(seq<=lastAppliedNavSeq)return false;
+      lastAppliedNavSeq=seq;
+    }
     return true;
   }
   function dispatchRemoteUI(msg){
@@ -1806,7 +1813,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}
     finally{setTimeout(()=>uiApply=false,70)}
   }
-  function replyUI(kind,payload={}){if(!conn?.open)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now(),reply:true})}
+  function replyUI(kind,payload={}){if(!conn?.open)return;actionSeq+=1;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now(),reply:true,actionSeq})}
   async function saveSessionMeta(mode,sessionCode){
     try{await PairDB.setMeta(SESSION_META,{mode,code:sessionCode,role:localRole,pairId:PairDB.active?.id||null,updatedAt:Date.now()})}catch(e){console.warn('session meta save',e)}
   }
@@ -1864,7 +1871,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
   }
   function wire(c,hostSide,sessionCode,restored=false){
     if(conn&&conn!==c){try{conn.close()}catch{}}
-    conn=c;isHost=hostSide;lastSent='';pendingPairSend=null;pendingRemoteNav=null;navClock=0;navVersion={clock:0,origin:''};$('#leaveSessionBtn').hidden=false;
+    conn=c;isHost=hostSide;lastSent='';pendingPairSend=null;pendingRemoteNav=null;navClock=0;navVersion={clock:0,origin:''};canonicalNavSeq=0;lastAppliedNavSeq=0;actionSeq=0;seenRemoteActions.clear();$('#leaveSessionBtn').hidden=false;
     c.on('open',async()=>{
       clearReconnect();
       const recoveringThisPage=!!restored;
@@ -1882,7 +1889,8 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
         // Старий локальний UI не надсилаємо назад партнеру.
       }else{
         if(isHost&&PairDB.active)sendPair(PairDB.active,true);
-        sendCurrentNavigation();
+        if(isHost) broadcastCanonicalNavigation(currentNavigationPayload(),false);
+        else sendCurrentNavigation();
         scheduleUISnapshot(220);
       }
     });
@@ -1901,7 +1909,8 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
         }
         // Snapshots sync visual details only; navigation has its own ordered channel.
         send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true});
-        sendCurrentNavigation();
+        if(hostSide) broadcastCanonicalNavigation(currentNavigationPayload(),false);
+        else sendCurrentNavigation();
         return;
       }
       if(msg?.type==='hello'){
@@ -1914,7 +1923,34 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
         }
         // Для reload додатково віддаємо актуальний UI після застосування пари.
         if(msg.recovering||msg.hasPair===false){
-          setTimeout(()=>{send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true});sendCurrentNavigation();},120);
+          setTimeout(()=>{send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true});if(hostSide)broadcastCanonicalNavigation(currentNavigationPayload(),false);else sendCurrentNavigation();},120);
+        }
+        return;
+      }
+      if(msg?.type==='nav-intent'&&hostSide&&msg.payload?.tab){
+        // The host serializes navigation from both devices. Apply the guest's
+        // request locally, then echo one canonical route to the guest.
+        dispatchRemoteUI({kind:'navigate',payload:msg.payload,origin:msg.origin});
+        broadcastCanonicalNavigation(msg.payload,false);
+        return;
+      }
+      if(msg?.type==='nav-state'&&!hostSide&&msg.payload?.tab){
+        const seq=Number(msg.seq)||0;
+        if(seq<=lastAppliedNavSeq)return;
+        lastAppliedNavSeq=seq;
+        dispatchRemoteUI({kind:'navigate',payload:msg.payload,origin:msg.origin,navSeq:seq});
+        return;
+      }
+      if(msg?.type==='pair-update'&&hostSide&&msg.pair){
+        // Guest changes are accepted by the host first and then rebroadcast as
+        // canonical state. This gives both phone and desktop one ordering point.
+        isApplying=true;
+        try{
+          await PairDB.applyRemote(msg.pair);
+          lastSent='';
+          sendPair(PairDB.active,true);
+        }finally{
+          setTimeout(()=>{isApplying=false;if(pendingPairSend){const q=pendingPairSend;pendingPairSend=null;sendPair(q.pair,q.force);}},40);
         }
         return;
       }
@@ -1948,7 +1984,10 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
           if(pendingRemoteNav){const queuedNav=pendingRemoteNav;pendingRemoteNav=null;dispatchRemoteUI(queuedNav);}
         },80);
       }return}
-      if(msg?.type==='ui'){dispatchRemoteUI(msg);return}
+      if(msg?.type==='ui'){
+        if(msg.origin&&msg.actionSeq){const k=String(msg.origin)+':'+String(msg.actionSeq);if(seenRemoteActions.has(k))return;seenRemoteActions.add(k);if(seenRemoteActions.size>600){const first=seenRemoteActions.values().next().value;seenRemoteActions.delete(first)}}
+        dispatchRemoteUI(msg);return
+      }
       if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot,{applyNavigation:false});return}
     });
     c.on('close',()=>{
