@@ -1621,7 +1621,7 @@ const pairStorage={
     // bootstrap was still awaiting. Re-check it before ever reopening the gate.
     const current=PairDB.active||p;
     if(current){document.dispatchEvent(new CustomEvent('pair:changed',{detail:current}));showApp()}
-    else showGate();
+    else showGate(false);
   }catch(err){console.error(err);gate.hidden=false;listEl.innerHTML='<div class="pair-list-empty">Не вдалося відкрити IndexedDB. Запустіть сайт через локальний веб-сервер (localhost), а не в приватному режимі.</div>'}})();
 })();
 
@@ -1716,7 +1716,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
 (() => {
   'use strict';
   const $=s=>document.querySelector(s);
-  let peer=null,conn=null,isApplying=false,lastSent='',pendingPairSend=null,localRole=null,remoteRole=null,isHost=false,uiApply=false,uiTimer=null;
+  let peer=null,conn=null,isApplying=false,lastSent='',pendingPairSend=null,localRole=null,remoteRole=null,isHost=false,uiApply=false,uiTimer=null,pendingRemoteNav=null,navClock=0,navVersion={clock:0,origin:''};
   let reconnectTimer=null, reconnectAttempts=0, restoring=false;
   const SESSION_META='p2p_session_v2';
   const status=(t,ok=false)=>{const e=$('#sessionStatus');if(e){e.textContent=t;e.classList.toggle('connected',ok)}};
@@ -1739,11 +1739,43 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     if(isApplying){pendingPairSend={pair:JSON.parse(JSON.stringify(pair)),force:!!force};return;}
     const snap=JSON.stringify(pair);if(!force&&snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap),authoritative:!!force,ts:Date.now()})
   }
+  const NAV_KINDS=new Set(['tab','game','game-menu']);
+  function navTupleNewer(a,b){
+    const ac=Number(a?.clock)||0,bc=Number(b?.clock)||0;
+    if(ac!==bc)return ac>bc;
+    return String(a?.origin||'')>String(b?.origin||'');
+  }
   function sendUI(kind,payload={}){
     if(!conn?.open)return;
+    const msg={type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now()};
+    if(NAV_KINDS.has(kind)){
+      navClock+=1;
+      msg.navClock=navClock;
+      navVersion={clock:navClock,origin:String(peer?.id||'')};
+    }
     // Do not drop a real local click merely because a remote UI event was applied
     // a few milliseconds earlier. Remote handlers already call their actions with sync=false.
-    send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now()})
+    send(msg)
+  }
+  function acceptRemoteNav(msg){
+    if(!NAV_KINDS.has(msg?.kind))return true;
+    const incoming={clock:Number(msg.navClock)||0,origin:String(msg.origin||'')};
+    navClock=Math.max(navClock,incoming.clock);
+    if(!navTupleNewer(incoming,navVersion))return false;
+    navVersion=incoming;
+    return true;
+  }
+  function dispatchRemoteUI(msg){
+    if(!msg)return;
+    if(NAV_KINDS.has(msg.kind)){
+      // Pair application is asynchronous. Queue the newest navigation command until
+      // the joined device has a usable active pair instead of applying half-initialised UI.
+      if(isApplying||!PairDB.active){pendingRemoteNav=msg;return;}
+      if(!acceptRemoteNav(msg))return;
+    }
+    uiApply=true;
+    try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}
+    finally{setTimeout(()=>uiApply=false,70)}
   }
   function replyUI(kind,payload={}){if(!conn?.open)return;send({type:'ui',kind,payload,origin:peer?.id||null,ts:Date.now(),reply:true})}
   async function saveSessionMeta(mode,sessionCode){
@@ -1812,9 +1844,18 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       try{wire(peer.connect(sessionCode,{reliable:true}),false,sessionCode,false)}catch{}
     },Math.min(5000,1000+reconnectAttempts*700));
   }
+  function sendCurrentNavigation(){
+    const which=document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1')||'calendar';
+    sendUI('tab',{which});
+    if(which==='games'){
+      const activeGame=document.body.dataset.activeGame||null;
+      if(activeGame)sendUI('game',{key:activeGame});
+      else sendUI('game-menu',{});
+    }
+  }
   function wire(c,hostSide,sessionCode,restored=false){
     if(conn&&conn!==c){try{conn.close()}catch{}}
-    conn=c;isHost=hostSide;lastSent='';pendingPairSend=null;$('#leaveSessionBtn').hidden=false;
+    conn=c;isHost=hostSide;lastSent='';pendingPairSend=null;pendingRemoteNav=null;navClock=0;navVersion={clock:0,origin:''};$('#leaveSessionBtn').hidden=false;
     c.on('open',async()=>{
       clearReconnect();
       const recoveringThisPage=!!restored;
@@ -1832,9 +1873,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
         // Старий локальний UI не надсилаємо назад партнеру.
       }else{
         if(isHost&&PairDB.active)sendPair(PairDB.active,true);
-        sendUI('tab',{which:document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1')||'calendar'});
-        const activeGame=document.body.dataset.activeGame||pairStorage.getItem('sa_active_game_v2');
-        if(activeGame)sendUI('game',{key:activeGame}); else if((document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1'))==='games')sendUI('game-menu',{});
+        sendCurrentNavigation();
         scheduleUISnapshot(220);
       }
     });
@@ -1851,7 +1890,9 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
           // Fallback для відновленої сесії, якщо ролі сторін уже помінялися.
           try{send({type:'pair',pair:JSON.parse(JSON.stringify(PairDB.active)),authoritative:true,ts:Date.now()})}catch{}
         }
+        // Snapshots sync visual details only; navigation has its own ordered channel.
         send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true});
+        sendCurrentNavigation();
         return;
       }
       if(msg?.type==='hello'){
@@ -1864,7 +1905,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
         }
         // Для reload додатково віддаємо актуальний UI після застосування пари.
         if(msg.recovering||msg.hasPair===false){
-          setTimeout(()=>send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true}),120);
+          setTimeout(()=>{send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now(),authoritative:true});sendCurrentNavigation();},120);
         }
         return;
       }
@@ -1880,9 +1921,9 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
           remoteRole=localRole===0?1:0;
         }
 
-        const g=$('#pairGate'),sh=$('#appShell'),lab=$('#activePairLabel');
-        if(g)g.hidden=true;
-        if(sh)sh.hidden=false;
+        // Pair selector/bootstrap owns whether the profile/session panel is open.
+        // Never force-close #pairGate here: the user may have opened “Сесія” manually.
+        const lab=$('#activePairLabel');
         if(lab&&PairDB.active)lab.textContent=PairDB.active.players.map(x=>x.name).join(' + ');
         const conflict=remoteRole===localRole;
         updateRoleStatus(conflict);
@@ -1895,10 +1936,11 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
         setTimeout(()=>{
           isApplying=false;
           if(pendingPairSend){const queued=pendingPairSend;pendingPairSend=null;sendPair(queued.pair,queued.force);}
+          if(pendingRemoteNav){const queuedNav=pendingRemoteNav;pendingRemoteNav=null;dispatchRemoteUI(queuedNav);}
         },80);
       }return}
-      if(msg?.type==='ui'){uiApply=true;try{document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:msg}))}finally{setTimeout(()=>uiApply=false,100)}return}
-      if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot,{applyNavigation:!!msg.authoritative});return}
+      if(msg?.type==='ui'){dispatchRemoteUI(msg);return}
+      if(msg?.type==='ui-snapshot'){applyUI(msg.snapshot,{applyNavigation:false});return}
     });
     c.on('close',()=>{
       conn=null;remoteRole=null;updateRoleStatus(false);
