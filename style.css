@@ -2812,3 +2812,4 @@ img,canvas,svg{max-width:100%}
 .compact-clear-btn{min-height:32px;padding:5px 9px!important;border-radius:10px!important;border:1px solid rgba(255,93,113,.14)!important;background:rgba(255,73,99,.04)!important;font-size:11px!important;font-weight:800!important}
 .compact-clear-btn:hover{background:rgba(255,73,99,.09)!important;border-color:rgba(255,93,113,.28)!important}
 @media(max-width:520px){.section-head-actions{gap:6px}.compact-clear-btn{min-height:30px;padding:4px 8px!important;font-size:10px!important}}
+\n\n/* v79: explicit return from session/profile panel */\n.pair-gate-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}\n.pair-gate-title-row .eyebrow{margin-bottom:14px}\n.pair-gate-close{flex:0 0 auto;min-height:44px!important;border-radius:14px!important}\n@media(max-width:640px){\n  .pair-gate-title-row{display:grid;grid-template-columns:1fr;gap:10px}\n  .pair-gate-close{width:100%!important;order:2}\n}\n

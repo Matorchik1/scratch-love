@@ -795,12 +795,12 @@ const pairStorage={
 
   document.addEventListener('session:role-changed',()=>syncPlayers());
 
-  function showTab(which, syncSession=true){
+  function showTab(which, syncSession=true, restoreGameView=true){
     calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(purchasesSection)purchasesSection.hidden=which!=='purchases'; if(progressSection)progressSection.hidden=which!=='progress';
     calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); purchasesTabBtn?.classList.toggle('active',which==='purchases'); progressTabBtn?.classList.toggle('active',which==='progress');
     if(syncSession && !window.SessionSync?.connected) pairStorage.setItem('sa_main_tab_v1',which);
     document.body.dataset.mainTab=which;
-    if(which==='games'){
+    if(which==='games' && restoreGameView){
       const connected=!!window.SessionSync?.connected;
       const runtimeGame=document.body.dataset.activeGame;
       const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):pairStorage.getItem(ACTIVE_GAME_KEY);
@@ -810,7 +810,7 @@ const pairStorage={
     if(which==='places') renderPlaces();
     if(which==='progress') renderProgressPage();
     if(which==='purchases') document.dispatchEvent(new CustomEvent('purchases:render'));
-    if(syncSession) window.SessionSync?.sendUI?.('tab',{which});
+    if(syncSession) window.SessionSync?.sendNavigation?.();
   }
   calendarTabBtn?.addEventListener('click',()=>showTab('calendar'));
   placesTabBtn?.addEventListener('click',()=>showTab('places'));
@@ -864,7 +864,7 @@ const pairStorage={
     delete document.body.dataset.activeGame;
     document.body.dataset.gameMenu='1';
     if(clearState && syncSession && !window.SessionSync?.connected) pairStorage.removeItem(ACTIVE_GAME_KEY);
-    if(syncSession) window.SessionSync?.sendUI?.('game-menu',{});
+    if(syncSession) window.SessionSync?.sendNavigation?.();
   }
   function openGame(key, syncSession=true){
     const meta=gameMeta[key]; if(!meta) return;
@@ -890,7 +890,7 @@ const pairStorage={
     document.body.dataset.activeGame=key;
     delete document.body.dataset.gameMenu;
     if(syncSession && !window.SessionSync?.connected) pairStorage.setItem(ACTIVE_GAME_KEY,key);
-    if(syncSession) window.SessionSync?.sendUI?.('game',{key});
+    if(syncSession) window.SessionSync?.sendNavigation?.();
   }
   $$('.game-launch-card').forEach(btn=>btn.addEventListener('click',()=>openGame(btn.dataset.game)));
   backToGames?.addEventListener('click',()=>showGamesMenu(true,true));
@@ -1512,9 +1512,21 @@ const pairStorage={
   
   document.addEventListener('session:remote-ui',e=>{
     const m=e.detail||{};
-    if(m.kind==='tab'&&m.payload?.which) showTab(m.payload.which,false);
-    if(m.kind==='game'&&m.payload?.key) openGame(m.payload.key,false);
-    if(m.kind==='game-menu') showGamesMenu(false,true);
+    if(m.kind==='navigate'&&m.payload?.tab){
+      const tab=m.payload.tab;
+      // Apply the whole navigation target atomically. In particular, when the
+      // target is Games we do NOT first restore a stale local game/menu state.
+      showTab(tab,false,false);
+      if(tab==='games'){
+        if(m.payload.view==='game'&&m.payload.game&&gameMeta[m.payload.game]) openGame(m.payload.game,false);
+        else showGamesMenu(false,true);
+      }
+    }
+    // Legacy navigation messages are kept for compatibility with an older peer,
+    // but v79 itself sends only one atomic `navigate` message.
+    if(m.kind==='tab'&&m.payload?.which) showTab(m.payload.which,false,false);
+    if(m.kind==='game'&&m.payload?.key){showTab('games',false,false);openGame(m.payload.key,false);}
+    if(m.kind==='game-menu'){showTab('games',false,false);showGamesMenu(false,true);}
     if(m.kind==='game-action'){
       const a=m.payload?.action;
       if(a==='passion-roll'){if(m.payload.heat)setHeat(m.payload.heat,{sync:false});openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
@@ -1558,7 +1570,7 @@ const pairStorage={
     pairs.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).forEach(p=>{
       const row=document.createElement('div');row.className='pair-row';
       const btn=document.createElement('button');btn.className='pair-select';btn.type='button';btn.innerHTML=`<strong>${pairLabel(p)}</strong><small>${p.players[0].gender==='male'?'Чоловік':'Жінка'} + ${p.players[1].gender==='male'?'Чоловік':'Жінка'}</small>`;
-      btn.onclick=async()=>{await PairDB.activate(p.id);showApp(true)};
+      btn.onclick=async()=>{if(PairDB.active?.id===p.id){showApp(true);return;}await PairDB.activate(p.id);showApp(true)};
       const del=document.createElement('button');del.className='pair-delete';del.type='button';del.textContent='×';del.title='Видалити пару';del.onclick=async()=>{if(confirm(`Видалити пару “${pairLabel(p)}” та весь її прогрес?`)){await PairDB.remove(p.id);await renderList();if(!PairDB.active)showGate()}};
       row.append(btn,del);listEl.appendChild(row);
     });
@@ -1568,6 +1580,7 @@ const pairStorage={
   function showGate(manual=true){manualGateOpen=!!manual;shell.hidden=true;gate.hidden=false;renderList()}
   $('#switchPairBtn')?.addEventListener('click',()=>showGate(true));
   $('#openSessionBtn')?.addEventListener('click',()=>{showGate(true);setTimeout(()=>document.querySelector('.pair-session-card')?.scrollIntoView({behavior:'smooth',block:'center'}),50)});
+  $('#closePairGateBtn')?.addEventListener('click',()=>showApp(true));
   $('#createPairBtn')?.addEventListener('click',async()=>{
     const p1=$('#newPairP1').value.trim()||'Гравець 1', p2=$('#newPairP2').value.trim()||'Гравець 2';
     await PairDB.create(p1,$('#newPairG1').value,p2,$('#newPairG2').value); showApp(true);
@@ -1739,7 +1752,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     if(isApplying){pendingPairSend={pair:JSON.parse(JSON.stringify(pair)),force:!!force};return;}
     const snap=JSON.stringify(pair);if(!force&&snap===lastSent)return;lastSent=snap;send({type:'pair',pair:JSON.parse(snap),authoritative:!!force,ts:Date.now()})
   }
-  const NAV_KINDS=new Set(['tab','game','game-menu']);
+  const NAV_KINDS=new Set(['navigate','tab','game','game-menu']);
   function navTupleNewer(a,b){
     const ac=Number(a?.clock)||0,bc=Number(b?.clock)||0;
     if(ac!==bc)return ac>bc;
@@ -1756,6 +1769,22 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     // Do not drop a real local click merely because a remote UI event was applied
     // a few milliseconds earlier. Remote handlers already call their actions with sync=false.
     send(msg)
+  }
+  let navSendTimer=null;
+  function sendNavigation(){
+    if(!conn?.open)return;
+    // Several UI helpers may run during one click (tab -> game/menu). Collapse
+    // them into ONE final navigation message so the partner never sees the
+    // intermediate state and cannot bounce between screens.
+    clearTimeout(navSendTimer);
+    navSendTimer=setTimeout(()=>{
+      if(!conn?.open)return;
+      const tab=document.body.dataset.mainTab||'calendar';
+      const activeGame=document.body.dataset.activeGame||null;
+      const gameMenu=document.body.dataset.gameMenu==='1';
+      const payload={tab,view:tab==='games'?(activeGame&&!gameMenu?'game':'menu'):null,game:tab==='games'&&activeGame&&!gameMenu?activeGame:null};
+      sendUI('navigate',payload);
+    },0);
   }
   function acceptRemoteNav(msg){
     if(!NAV_KINDS.has(msg?.kind))return true;
@@ -1807,21 +1836,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
       // snapshot from the other device can bounce a freshly opened game back
       // to the previous screen. Only an authoritative recovery snapshot
       // (state-request / reconnect) may restore navigation.
-      if(applyNavigation&&snap.mainTab){
-        const currentTab=document.body.dataset.mainTab||null;
-        const currentGame=document.body.dataset.activeGame||null;
-        const currentMenu=document.body.dataset.gameMenu==='1';
-        if(currentTab!==snap.mainTab){
-          document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'tab',payload:{which:snap.mainTab},fromSnapshot:true}}));
-        }
-        if(snap.mainTab==='games'){
-          if(snap.gameMenu){
-            if(!currentMenu)document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game-menu',payload:{},fromSnapshot:true}}));
-          }else if(snap.activeGame&&currentGame!==snap.activeGame){
-            document.dispatchEvent(new CustomEvent('session:remote-ui',{detail:{kind:'game',payload:{key:snap.activeGame},fromSnapshot:true}}));
-          }
-        }
-      }
+      // v79: snapshots never control navigation. Navigation is an atomic ordered event.
       Object.entries(snap.fields||{}).forEach(([id,v])=>{const el=document.getElementById(id);if(!el)return;if('hidden'in v)el.hidden=!!v.hidden;if(v.src&&el.tagName==='IMG'){el.src=v.src;if(v.alt)el.alt=v.alt}else if(typeof v.html==='string')el.innerHTML=v.html;if(v.transform&&id==='fortuneWheelRotor'){el.style.transform=v.transform;el.style.transition=v.transition||''}});
       if(snap.fields?.fortuneWheelRotor){const r=$('#fortuneWheelRotor');if(r){r.style.transform=snap.fields.fortuneWheelRotor.transform||'';r.style.transition=snap.fields.fortuneWheelRotor.transition||''}}
       (snap.slots||[]).forEach((html,i)=>{const track=document.querySelector(slotSelectors[i]);if(track&&html)track.innerHTML=html});
@@ -1832,7 +1847,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     }finally{setTimeout(()=>uiApply=false,100)}
   }
   function scheduleUISnapshot(delay=140){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{if(conn?.open&&!uiApply)send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now()})},delay)}
-  window.SessionSync={sendUI,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open},get ready(){return !!conn?.open&&!restoring&&!!PairDB.active&&(localRole===0||localRole===1)&&(remoteRole===0||remoteRole===1)&&remoteRole!==localRole}};
+  window.SessionSync={sendUI,sendNavigation,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open},get ready(){return !!conn?.open&&!restoring&&!!PairDB.active&&(localRole===0||localRole===1)&&(remoteRole===0||remoteRole===1)&&remoteRole!==localRole}};
 
   function clearReconnect(){clearTimeout(reconnectTimer);reconnectTimer=null;reconnectAttempts=0}
   function scheduleGuestReconnect(sessionCode){
@@ -1845,13 +1860,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     },Math.min(5000,1000+reconnectAttempts*700));
   }
   function sendCurrentNavigation(){
-    const which=document.body.dataset.mainTab||pairStorage.getItem('sa_main_tab_v1')||'calendar';
-    sendUI('tab',{which});
-    if(which==='games'){
-      const activeGame=document.body.dataset.activeGame||null;
-      if(activeGame)sendUI('game',{key:activeGame});
-      else sendUI('game-menu',{});
-    }
+    sendNavigation();
   }
   function wire(c,hostSide,sessionCode,restored=false){
     if(conn&&conn!==c){try{conn.close()}catch{}}
