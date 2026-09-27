@@ -1589,8 +1589,31 @@ const pairStorage={
     }catch(err){console.error(err);alert('Не вдалося імпортувати файл. Перевірте, що це резервна копія Scratch Love.');}
     e.target.value='';
   });
-  document.addEventListener('pair:changed',e=>{if(e.detail)label.textContent=pairLabel(e.detail)});document.addEventListener('pair:profile',()=>{if(PairDB.active)label.textContent=pairLabel(PairDB.active)});
-  (async()=>{try{const p=await PairDB.init();if(p){document.dispatchEvent(new CustomEvent('pair:changed',{detail:p}));showApp()}else showGate()}catch(err){console.error(err);gate.hidden=false;listEl.innerHTML='<div class="pair-list-empty">Не вдалося відкрити IndexedDB. Запустіть сайт через локальний веб-сервер (localhost), а не в приватному режимі.</div>'}})();
+  document.addEventListener('pair:changed',e=>{
+    const p=e.detail||PairDB.active;
+    if(!p)return;
+    label.textContent=pairLabel(p);
+    // A pair received from the live session is already the active local pair.
+    // Always enter the app here so a late bootstrap/showGate cannot trap the
+    // joining player on the pair selector after synchronization succeeded.
+    showApp();
+    renderList().catch(()=>{});
+  });
+  document.addEventListener('pair:remote-applied',()=>{
+    if(PairDB.active){showApp();renderList().catch(()=>{});}
+  });
+  document.addEventListener('session:pair-ready',()=>{
+    if(PairDB.active){showApp();renderList().catch(()=>{});}
+  });
+  document.addEventListener('pair:profile',()=>{if(PairDB.active)label.textContent=pairLabel(PairDB.active)});
+  (async()=>{try{
+    const p=await PairDB.init();
+    // PairDB.active may have been populated by the session while IndexedDB
+    // bootstrap was still awaiting. Re-check it before ever reopening the gate.
+    const current=PairDB.active||p;
+    if(current){document.dispatchEvent(new CustomEvent('pair:changed',{detail:current}));showApp()}
+    else showGate();
+  }catch(err){console.error(err);gate.hidden=false;listEl.innerHTML='<div class="pair-list-empty">Не вдалося відкрити IndexedDB. Запустіть сайт через локальний веб-сервер (localhost), а не в приватному режимі.</div>'}})();
 })();
 
 // v20 unified progress refresh
