@@ -85,26 +85,8 @@
       <button class="main-tab active" id="calendarTabBtn" type="button">Календар поз</button>
       <button class="main-tab" id="placesTabBtn" type="button">Познач місця</button>
       <button class="main-tab" id="gamesTabBtn" type="button">Ігри</button>
-      <button class="main-tab" id="purchasesTabBtn" type="button">Бажані покупки</button>
       <button class="main-tab" id="progressTabBtn" type="button">Прогрес</button>
     </nav>
-
-    <div id="planningApprovalModal" class="score-finish-modal planning-approval-modal" hidden>
-      <div class="score-finish-dialog planning-approval-dialog" role="dialog" aria-modal="true" aria-labelledby="planningApprovalTitle">
-        <div class="score-finish-icon" id="planningApprovalIcon">🗓️</div>
-        <h3 id="planningApprovalTitle">Погодити планування?</h3>
-        <p id="planningApprovalSummary">—</p>
-        <div class="score-finish-votes">
-          <div class="score-finish-vote" id="planningApprovalSelfVote"><span>Ви</span><strong>Очікує</strong></div>
-          <div class="score-finish-vote" id="planningApprovalPartnerVote"><span>Ваш партнер</span><strong>Очікує</strong></div>
-        </div>
-        <p id="planningApprovalHint" class="muted">Для зміни плану мають погодитися обидва.</p>
-        <div class="score-finish-actions">
-          <button id="planningApprovalAgreeBtn" class="btn primary" type="button">Погодитись</button>
-          <button id="planningApprovalRejectBtn" class="btn secondary" type="button">Відхилити</button>
-        </div>
-      </div>
-    </div>
 
     <section id="calendarSection">
     <header class="hero">
@@ -164,48 +146,6 @@
     </section>
 
 
-    <section id="purchasesSection" class="games-section purchases-page" hidden>
-      <div class="game-card purchases-hero">
-        <div class="section-head-row purchases-head">
-          <div>
-            <span class="eyebrow">СПІЛЬНИЙ WISHLIST</span>
-            <h2>Бажані покупки</h2>
-            <p class="muted">Додавайте товари, дивіться загальну суму та голосуйте разом, чи справді вони потрібні.</p>
-          </div>
-          <button id="openPurchaseFormBtn" class="btn primary compact" type="button">＋ Додати товар</button>
-        </div>
-        <div class="purchase-totals" aria-label="Підсумок покупок">
-          <div class="purchase-total-card total-all"><small>Усього</small><strong id="purchaseGrandTotal">0</strong><span id="purchaseGrandItems">0 товарів</span></div>
-          <div class="purchase-total-card total-self"><small>Додали ви</small><strong id="purchaseSelfTotal">0</strong><span id="purchaseSelfItems">0 товарів</span></div>
-          <div class="purchase-total-card total-partner"><small>Додав партнер</small><strong id="purchasePartnerTotal">0</strong><span id="purchasePartnerItems">0 товарів</span></div>
-        </div>
-      </div>
-
-      <form id="purchaseForm" class="game-card purchase-form" hidden>
-        <div class="section-head-row"><div><span class="eyebrow" id="purchaseFormEyebrow">НОВИЙ ТОВАР</span><h2 id="purchaseFormTitle">Додати покупку</h2></div><button id="closePurchaseFormBtn" class="text-btn" type="button">Закрити ×</button></div>
-        <div class="purchase-form-grid">
-          <label class="purchase-field purchase-title-field"><span>Назва товару</span><input id="purchaseNameInput" required maxlength="120" placeholder="Наприклад: Навушники"></label>
-          <label class="purchase-field"><span>Ціна</span><input id="purchasePriceInput" required type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00"></label>
-          <label class="purchase-field"><span>Кількість</span><input id="purchaseQtyInput" required type="number" min="1" step="1" inputmode="numeric" value="1"></label>
-          <label class="purchase-field purchase-wide"><span>Посилання на товар</span><input id="purchaseUrlInput" type="url" placeholder="https://..."></label>
-          <label class="purchase-field purchase-wide"><span>Посилання на картинку</span><input id="purchaseImageInput" type="url" placeholder="https://..."></label>
-        </div>
-        <div class="purchase-form-actions"><button class="btn primary" id="purchaseSubmitBtn" type="submit">Додати в список</button></div>
-      </form>
-
-      <div class="purchases-toolbar">
-        <div><strong id="purchaseListTitle">Список покупок</strong><span id="purchaseCountBadge" class="count-badge">0</span></div>
-        <div class="purchase-filter" role="group" aria-label="Фільтр покупок">
-          <button class="purchase-filter-btn active" data-purchase-filter="all" type="button">Усі</button>
-          <button class="purchase-filter-btn" data-purchase-filter="mine" type="button">Мої</button>
-          <button class="purchase-filter-btn" data-purchase-filter="partner" type="button">Партнера</button>
-          <button class="purchase-filter-btn" data-purchase-filter="planned" type="button">В планах</button>
-          <button class="purchase-filter-btn" data-purchase-filter="purchased" type="button">Придбані</button>
-        </div>
-      </div>
-      <div id="purchaseList" class="purchase-grid"></div>
-    </section>
-
     <section id="progressSection" class="games-section progress-page" hidden>
       <header class="hero games-hero"><div><div class="eyebrow">📊 ПРОГРЕС ПАРИ</div><h1>Прогрес</h1><p class="subtitle">Загальний прогрес позицій і місць для активної пари, статистика по місяцях та відкладені пози.</p></div></header>
       <div class="progress-page-grid">
@@ -214,9 +154,6 @@
       </div>
       <article class="game-card"><div class="section-head-row"><h2>По місяцях</h2></div><div id="pageProgressMonths" class="progress-months"></div></article>
       <article class="game-card"><div class="section-head-row"><h2>Відкладені пози та бажання</h2><span id="pageDeferredCount" class="count-badge">0</span></div><div id="pageDeferredList" class="progress-deferred"></div></article>
-      <article class="game-card"><div class="section-head-row"><h2>Покупки</h2><span id="pagePurchaseStatusCount" class="count-badge">0</span></div><p class="muted">Товари, які вже придбані або додані у найближчі плани.</p><div id="pagePurchaseStatusList" class="progress-deferred purchase-progress-list"></div></article>
-      <article class="game-card"><div class="section-head-row"><h2>Заплановані місця</h2><span id="pagePlannedPlacesCount" class="count-badge">0</span></div><p class="muted">Місця, які ви хочете відвідати або спробувати разом.</p><div id="pagePlannedPlacesList" class="progress-deferred planned-places-list"></div></article>
-      <article class="game-card"><div class="section-head-row"><h2>Бажання за результатами ігор</h2><span id="pageGameDebtCount" class="count-badge">0</span></div><p class="muted">Після «Підвести результат» гравець із меншим рахунком виконує бажання переможця.</p><div id="pageGameDebtList" class="progress-deferred game-debt-list"></div></article>
     </section>
 
     <section id="gamesSection" class="games-section" hidden>
@@ -228,25 +165,7 @@
         </div>
       </header>
 
-        <div id="scoreFinishModal" class="score-finish-modal" hidden>
-          <div class="score-finish-dialog" role="dialog" aria-modal="true" aria-labelledby="scoreFinishTitle">
-            <div class="score-finish-icon">🏆</div>
-            <h3 id="scoreFinishTitle">Підвести результат?</h3>
-            <p id="scoreFinishSummary">—</p>
-            <div class="score-finish-votes">
-              <div class="score-finish-vote" id="scoreFinishSelfVote"><span>Ви</span><strong>Очікує</strong></div>
-              <div class="score-finish-vote" id="scoreFinishPartnerVote"><span>Ваш партнер</span><strong>Очікує</strong></div>
-            </div>
-            <p id="scoreFinishHint" class="muted">Для завершення мають погодитися обидва.</p>
-            <div class="score-finish-actions">
-              <button id="scoreFinishAgreeBtn" class="btn primary" type="button">Погодитись</button>
-              <button id="scoreFinishRejectBtn" class="btn secondary" type="button">Відхилити</button>
-            </div>
-          </div>
-        </div>
-
       <section id="gamesMenu" class="games-menu">
-        <div class="games-group-header games-group-points"><span>🏆</span><div><strong>Ігри з поінтами</strong><small>Виконуйте завдання, заробляйте бали та підводьте спільний результат</small></div></div>
         <button class="game-launch-card" data-game="passion" type="button">
           <span class="game-launch-icon" aria-hidden="true"><img src="images/ui/game_icons/passion.png" alt=""></span>
           <span><strong>Рулетка Страсті</strong><small>Дія + частина тіла, по черзі для двох</small></span>
@@ -257,7 +176,6 @@
           <span><strong>Прямолінійний кубик</strong><small>Оберіть дію та прокрутіть частини тіла</small></span>
           <span class="game-launch-arrow">›</span>
         </button>
-        <div class="games-group-header games-group-no-points"><span>✨</span><div><strong>Ігри без поінтів</strong><small>Для випадкового вибору, сценаріїв, бажань і спільних квестів</small></div></div>
         <button class="game-launch-card" data-game="randomPose" type="button">
           <span class="game-launch-icon" aria-hidden="true"><img src="images/ui/game_icons/random_pose.png" alt=""></span>
           <span><strong>Випадкова поза</strong><small>Крутіть колесо та отримайте випадкову MF-позу</small></span>
@@ -291,12 +209,12 @@
             <strong id="partnerPlayerName">—</strong>
             <span id="partnerPlayerGender">—</span>
           </div>
-          <div class="score-actions"><button id="finishScoreBtn" class="btn primary compact" type="button">Підвести результат</button><button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button></div>
+          <button id="resetScoreBtn" class="text-btn danger" type="button">Скинути рахунок</button>
         </section>
 
         <details id="rouletteCustomPanel" class="custom-options-card" hidden>
           <summary>＋ Власні варіанти рулеток</summary>
-          <p>Варіанти зберігаються тільки для активної пари. Власна дія додається у «Рулетка Страсті», а власна частина тіла — в обидві рулетки частин тіла. Для власної частини тіла можна задати стать і рівень гарячості.</p>
+          <p>Варіанти зберігаються тільки для активної пари. Власна дія додається у «Рулетка Страсті», а власна частина тіла — в обидві рулетки частин тіла.</p>
           <div class="custom-options-grid">
             <section class="custom-option-section">
               <h3>Свої дії</h3>
@@ -315,12 +233,6 @@
                   <option value="male">Для чоловіка</option>
                   <option value="female">Для жінки</option>
                 </select>
-                <select id="customBodyHeat" aria-label="Гарячість власної частини тіла">
-                  <option value="1">Ніжно</option>
-                  <option value="2">Тепло</option>
-                  <option value="3">Гаряче</option>
-                  <option value="4">Максимум</option>
-                </select>
                 <button class="btn secondary" type="submit">Додати</button>
               </form>
               <div id="customBodyList" class="custom-chip-list"></div>
@@ -332,47 +244,27 @@
           <div class="game-card-head">
             <div><div class="eyebrow">🎰 КУБИК СТРАСТІ</div><h2>Дія + частина тіла</h2><p>Обидва барабани прокручуються одночасно. Видимі сусідні варіанти — як у справжньому слоті.</p></div>
           </div>
-
-          <div class="heat-control" data-heat-control>
-            <div class="heat-control-head"><strong>Гарячість</strong><small>Чим гарячіше — тим менше лайтових зон і більше інтимних</small></div>
-            <div class="heat-buttons" role="group" aria-label="Гарячість">
-              <button class="heat-btn" type="button" data-heat="1">Ніжно</button>
-              <button class="heat-btn" type="button" data-heat="2">Тепло</button>
-              <button class="heat-btn" type="button" data-heat="3">Гаряче</button>
-              <button class="heat-btn" type="button" data-heat="4">Максимум</button>
-            </div>
-          </div>
           <div class="slot-stack">
             <div class="slot-block">
               <span class="reel-label">Дія</span>
-              <div class="slot-window reel-3d" id="passionActionReel" aria-label="Рулетка дій"><div class="slot-track"></div><div class="slot-focus"></div></div>
+              <div class="slot-window" id="passionActionReel" aria-label="Рулетка дій"><div class="slot-track"></div><div class="slot-focus"></div></div>
             </div>
             <div class="slot-block">
               <span class="reel-label">Частина тіла</span>
-              <div class="slot-window reel-3d" id="passionBodyReel" aria-label="Рулетка частин тіла"><div class="slot-track"></div><div class="slot-focus"></div></div>
+              <div class="slot-window" id="passionBodyReel" aria-label="Рулетка частин тіла"><div class="slot-track"></div><div class="slot-focus"></div></div>
             </div>
           </div>
           <button class="btn primary roll-btn big-roll" id="passionRollBtn" type="button">Кинути</button>
           <div class="result-box" id="passionResultBox" hidden>
             <small id="passionTurnLabel"></small>
             <strong id="passionResult">—</strong>
-            <small class="result-evaluator-note" id="passionEvaluatorNote"></small><div class="result-actions"><button class="btn primary" id="passionDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="passionNoBtn" type="button">Ні</button></div>
+            <div class="result-actions"><button class="btn primary" id="passionDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="passionNoBtn" type="button">Ні</button></div>
           </div>
         </article>
 
         <article class="game-card single-game-view" id="directGameView" hidden>
           <div class="game-card-head">
             <div><div class="eyebrow">🎲 ПРЯМОЛІНІЙНИЙ КУБИК</div><h2>Оберіть дію</h2><p>Після вибору дії прокрутіть барабан із частинами тіла.</p></div>
-          </div>
-
-          <div class="heat-control" data-heat-control>
-            <div class="heat-control-head"><strong>Гарячість</strong><small>Чим гарячіше — тим менше лайтових зон і більше інтимних</small></div>
-            <div class="heat-buttons" role="group" aria-label="Гарячість">
-              <button class="heat-btn" type="button" data-heat="1">Ніжно</button>
-              <button class="heat-btn" type="button" data-heat="2">Тепло</button>
-              <button class="heat-btn" type="button" data-heat="3">Гаряче</button>
-              <button class="heat-btn" type="button" data-heat="4">Максимум</button>
-            </div>
           </div>
           <div class="action-choice" id="directActionChoice">
             <button class="choice-btn active" data-action="Стиснути" type="button">Стиснути</button>
@@ -382,14 +274,14 @@
           <div class="slot-stack one-slot">
             <div class="slot-block">
               <span class="reel-label">Частина тіла</span>
-              <div class="slot-window reel-3d" id="directBodyReel" aria-label="Рулетка частин тіла"><div class="slot-track"></div><div class="slot-focus"></div></div>
+              <div class="slot-window" id="directBodyReel" aria-label="Рулетка частин тіла"><div class="slot-track"></div><div class="slot-focus"></div></div>
             </div>
           </div>
           <button class="btn primary roll-btn big-roll" id="directRollBtn" type="button">Кинути</button>
           <div class="result-box" id="directResultBox" hidden>
             <small id="directTurnLabel"></small>
             <strong id="directResult">—</strong>
-            <small class="result-evaluator-note" id="directEvaluatorNote"></small><div class="result-actions"><button class="btn primary" id="directDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="directNoBtn" type="button">Ні</button></div>
+            <div class="result-actions"><button class="btn primary" id="directDoneBtn" type="button">Виконав ✓</button><button class="btn secondary" id="directNoBtn" type="button">Ні</button></div>
           </div>
         </article>
 
@@ -513,7 +405,6 @@
       <section class="progress-section"><h3>По рівнях</h3><div id="progressLevels" class="progress-levels"></div></section>
       <section class="progress-section"><h3>По місяцях</h3><div id="progressMonths" class="progress-months"></div></section>
       <section class="progress-section"><div class="section-head-row"><h3>Відкладені пози</h3><span id="deferredCountBadge" class="count-badge">0</span></div><div id="progressDeferred" class="progress-deferred"></div></section>
-      <section class="progress-section"><div class="section-head-row"><h3>Бажання за результатами ігор</h3><span id="gameDebtCountBadge" class="count-badge">0</span></div><div id="progressGameDebts" class="progress-deferred game-debt-list"></div></section>
     </div>
   </dialog>
 
@@ -534,6 +425,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="positions.js?v=27"></script>
   <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-  <script src="app.js?v=60"></script>
+  <script src="app.js?v=40"></script>
 </body>
 </html>

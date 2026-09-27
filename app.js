@@ -81,7 +81,7 @@ const pairStorage={
     allDialog: $('#allPositionsDialog'), closeAllDialog: $('#closeAllPositionsDialog'), allGrid: $('#allPositionsGrid'),
     dialog: $('#positionDialog'), close: $('#closePositionDialog'),
     categoryTitle: $('#positionCategoryTitle'), dayTitle: $('#positionDayTitle'), image: $('#calendarPositionImage'), canvas: $('#positionScratchCanvas'),
-    instruction: $('#positionInstruction'), poseMeta: $('#positionMeta'), poseName: $('#positionPoseName'), poseDescription: $('#positionPoseDescription'), reveal: $('#revealPositionBtn'), defer: $('#deferPositionBtn'), complete: $('#completePositionBtn'), toast: $('#toast'), deferDialog: $('#deferDialog'), closeDeferDialog: $('#closeDeferDialog'), deferChoices: $('#deferPlayerChoices'), progressDialog: $('#progressDialog'), openProgress: $('#openProgressBtn'), closeProgress: $('#closeProgressDialog'), progressOverview: $('#progressOverview'), progressLevels: $('#progressLevels'), progressMonths: $('#progressMonths'), progressDeferred: $('#progressDeferred'), deferredCountBadge: $('#deferredCountBadge'), progressGameDebts: $('#progressGameDebts'), gameDebtCountBadge: $('#gameDebtCountBadge')
+    instruction: $('#positionInstruction'), poseMeta: $('#positionMeta'), poseName: $('#positionPoseName'), poseDescription: $('#positionPoseDescription'), reveal: $('#revealPositionBtn'), defer: $('#deferPositionBtn'), complete: $('#completePositionBtn'), toast: $('#toast'), deferDialog: $('#deferDialog'), closeDeferDialog: $('#closeDeferDialog'), deferChoices: $('#deferPlayerChoices'), progressDialog: $('#progressDialog'), openProgress: $('#openProgressBtn'), closeProgress: $('#closeProgressDialog'), progressOverview: $('#progressOverview'), progressLevels: $('#progressLevels'), progressMonths: $('#progressMonths'), progressDeferred: $('#progressDeferred'), deferredCountBadge: $('#deferredCountBadge')
   };
 
   // Same keys as previous MF versions: old progress is preserved.
@@ -91,7 +91,6 @@ const pairStorage={
   const DEV_UNLOCK_ALL_KEY = 'sa_position_dev_unlock_all_mf';
   const DEFERRED_KEY = 'sa_position_deferred_mf_v1';
   const HISTORY_KEY = 'sa_position_history_mf_v1';
-  const GAME_WISH_DEBTS_KEY = 'sa_game_wish_debts_v1';
   let current = null;
   let currentGlobalIndex = -1;
   let currentCategoryIndex = -1;
@@ -444,21 +443,6 @@ const pairStorage={
     const deferredList=Object.values(deferred).sort((a,b)=>new Date(b.date)-new Date(a.date));
     deferredList.forEach(info=>{ const item=ITEMS.find(x=>x.id===Number(info.id)); if(!item)return; const card=document.createElement('div'); card.className='deferred-progress-card'+(info.wishDone?' wish-done':''); card.innerHTML=`<img src="${item.image}" alt="Поза ${item.order_index}"><div><strong>Поза ${item.order_index} · ${item.poseTitle||''}</strong><span>${info.wishDone?'Бажання виконано ✓':`${info.debtorName} має виконати бажання ${info.partnerName}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`; const actions=document.createElement('div'); actions.className='deferred-card-actions'; if(!info.wishDone){ const wish=document.createElement('button'); wish.type='button'; wish.className='btn primary compact'; wish.textContent='Бажання виконано ✓'; wish.addEventListener('click',()=>{ const all=getDeferred(); if(all[info.id]){ all[info.id].wishDone=true; all[info.id].wishDoneDate=new Date().toISOString(); saveJSON(DEFERRED_KEY,all); } renderDetailedProgress(); document.dispatchEvent(new CustomEvent('progress:changed')); }); actions.appendChild(wish); } const btn=document.createElement('button'); btn.type='button'; btn.className='btn secondary compact'; btn.textContent='Відкрити'; btn.addEventListener('click',()=>{els.progressDialog.close(); const loc=findItemLocation(item); openPosition(item,loc.globalIndex,loc.catIndex,loc.localIndex,false)}); actions.appendChild(btn); card.appendChild(actions); els.progressDeferred.appendChild(card); });
     if(!deferredList.length) els.progressDeferred.innerHTML='<p class="empty-state">Відкладених поз немає.</p>';
-    const gameDebts=readJSON(GAME_WISH_DEBTS_KEY,[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
-    if(els.gameDebtCountBadge) els.gameDebtCountBadge.textContent=gameDebts.filter(x=>!x.wishDone).length;
-    if(els.progressGameDebts){
-      els.progressGameDebts.innerHTML='';
-      gameDebts.forEach(info=>{
-        const card=document.createElement('div');
-        card.className='deferred-progress-card game-debt-card'+(info.wishDone?' wish-done':'');
-        const score=Array.isArray(info.score)?`${info.score[0]} : ${info.score[1]}`:'—';
-        card.innerHTML=`<div class="game-debt-icon">🏆</div><div><strong>${info.debtorName||'Гравець'} виконує бажання</strong><span>${info.wishDone?'Бажання виконано ✓':`Для ${info.partnerName||'партнера'} · рахунок ${score}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;
-        const actions=document.createElement('div');actions.className='deferred-card-actions';
-        if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>{const all=readJSON(GAME_WISH_DEBTS_KEY,[]);const row=all.find(x=>x.id===info.id);if(row){row.wishDone=true;row.wishDoneDate=new Date().toISOString();saveJSON(GAME_WISH_DEBTS_KEY,all);PairDB.save?.();window.SessionSync?.replyUI?.('game-action',{action:'game-debt-done',id:info.id,wishDoneDate:row.wishDoneDate});}renderDetailedProgress();document.dispatchEvent(new CustomEvent('progress:changed'));});actions.appendChild(wish)}
-        card.appendChild(actions);els.progressGameDebts.appendChild(card);
-      });
-      if(!gameDebts.length)els.progressGameDebts.innerHTML='<p class="empty-state">Поки немає бажань за результатами ігор.</p>';
-    }
   }
 
   els.defer?.addEventListener('click',openDeferDialog);
@@ -502,18 +486,7 @@ const pairStorage={
   'use strict';
   const $ = s => document.querySelector(s);
   const $$ = s => [...document.querySelectorAll(s)];
-  // Local toast helper for the games module. The calendar module has its own
-  // scoped toast() function, while the global `toast` name may resolve to the
-  // #toast DOM element in browsers.
-  function toast(msg){
-    const el=document.getElementById('toast');
-    if(!el)return;
-    el.textContent=String(msg??'');
-    el.classList.add('show');
-    clearTimeout(toast.t);
-    toast.t=setTimeout(()=>el.classList.remove('show'),1800);
-  }
-  const calendarTabBtn=$('#calendarTabBtn'), placesTabBtn=$('#placesTabBtn'), gamesTabBtn=$('#gamesTabBtn'), purchasesTabBtn=$('#purchasesTabBtn'), progressTabBtn=$('#progressTabBtn'), calendarSection=$('#calendarSection'), placesSection=$('#placesSection'), gamesSection=$('#gamesSection'), purchasesSection=$('#purchasesSection'), progressSection=$('#progressSection');
+  const calendarTabBtn=$('#calendarTabBtn'), placesTabBtn=$('#placesTabBtn'), gamesTabBtn=$('#gamesTabBtn'), progressTabBtn=$('#progressTabBtn'), calendarSection=$('#calendarSection'), placesSection=$('#placesSection'), gamesSection=$('#gamesSection'), progressSection=$('#progressSection');
   if(!gamesSection) return;
 
   const NAMES_KEY='sa_games_player_names_v1',
@@ -522,12 +495,8 @@ const pairStorage={
         TURN_KEY='sa_games_turn_v1',
         PENDING_GAME_KEY='sa_games_pending_result_v1',
         PLACES_KEY='sa_games_places_v2',
-        PLACES_PLANNED_KEY='sa_games_places_planned_v1',
         CUSTOM_ACTIONS_KEY='sa_games_custom_actions_v1',
         CUSTOM_BODY_KEY='sa_games_custom_body_v1',
-        HEAT_KEY='sa_games_heat_v1',
-        GAME_WISH_DEBTS_KEY='sa_game_wish_debts_v1',
-        SCORE_FINISH_PROPOSAL_KEY='sa_score_finish_proposal_v1',
         CUSTOM_PLACES_KEY='sa_places_custom_v1';
 
   // Місця витягнуті з string-resources наданого APK Scratch Adventure.
@@ -548,39 +517,6 @@ const pairStorage={
     {label:'Вагіна',gender:'female'}
   ];
 
-
-  const BODY_HEAT={
-    light:new Set(['Рука','Спина','Живіт','Щоки','Вухо','Стопи','Палець','Коліна','Нога','Пупок','Ніс','Пальці ніг']),
-    warm:new Set(['Сідниці','Груди','Пах','Губи','Шия','Соски','Стегно']),
-    intimate:new Set(['Яєчка','Клітор','Статеві губи','Пеніс','Промежина','Вагіна'])
-  };
-  const getHeat=()=>Math.min(4,Math.max(1,Number(pairStorage.getItem(HEAT_KEY)||2)||2));
-  const setHeat=(value,{sync=true}={})=>{
-    const heat=Math.min(4,Math.max(1,Number(value)||2));
-    pairStorage.setItem(HEAT_KEY,String(heat));
-    renderHeatControls();
-    refreshBodyPools();
-    PairDB.save?.();
-    if(sync&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'heat-change',heat});
-  };
-  function renderHeatControls(){
-    const heat=getHeat();
-    $$('[data-heat-control] .heat-btn').forEach(btn=>{
-      const active=Number(btn.dataset.heat)===heat;
-      btn.classList.toggle('active',active);
-      btn.setAttribute('aria-pressed',active?'true':'false');
-    });
-  }
-  function heatFilteredBody(items){
-    const heat=getHeat();
-    if(heat<=1)return items;
-    const isCustom=x=>String(x.id||'').startsWith('cb_')||String(x.id||'').startsWith('custom_');
-    const customAllowed=x=>!isCustom(x) || Math.min(4,Math.max(1,Number(x.heat)||1))>=heat;
-    if(heat===2)return items.filter(x=>customAllowed(x) && (isCustom(x) || !['Рука','Щоки','Ніс','Палець','Стопи','Коліна','Пальці ніг'].includes(x.label)));
-    if(heat===3)return items.filter(x=>customAllowed(x) && (isCustom(x) || BODY_HEAT.warm.has(x.label)||BODY_HEAT.intimate.has(x.label)||['Шия','Губи'].includes(x.label)));
-    return items.filter(x=>customAllowed(x) && (isCustom(x) || BODY_HEAT.intimate.has(x.label)||['Сідниці','Груди','Пах','Соски'].includes(x.label)));
-  }
-
   const gamesMenu=$('#gamesMenu'), gameDetail=$('#gameDetail'), backToGames=$('#backToGamesBtn'), activeGameTitle=$('#activeGameTitle');
   const playersPanel=$('#playersPanel');
   const gameViews={passion:$('#passionGameView'),direct:$('#directGameView'),randomPose:$('#randomPoseGameView'),secretWish:$('#secretWishGameView'),scenarioWheel:$('#scenarioWheelGameView'),fiveMinutes:$('#fiveMinutesGameView'),blindChoice:$('#blindChoiceGameView'),wishBattle:$('#wishBattleGameView'),eveningQuest:$('#eveningQuestGameView')};
@@ -599,7 +535,7 @@ const pairStorage={
 
   const safeParse=(k,f)=>{try{return JSON.parse(pairStorage.getItem(k)||JSON.stringify(f))}catch{return f}};
   const getCustomActions=()=>safeParse(CUSTOM_ACTIONS_KEY,[]).filter(x=>typeof x==='string'&&x.trim()).map(x=>x.trim());
-  const getCustomBody=()=>safeParse(CUSTOM_BODY_KEY,[]).filter(x=>x&&typeof x.label==='string').map(x=>({id:x.id||('cb_'+Math.random().toString(36).slice(2)),label:x.label.trim(),gender:['male','female','any'].includes(x.gender)?x.gender:'any',heat:Math.min(4,Math.max(1,Number(x.heat)||1))}));
+  const getCustomBody=()=>safeParse(CUSTOM_BODY_KEY,[]).filter(x=>x&&typeof x.label==='string').map(x=>({id:x.id||('cb_'+Math.random().toString(36).slice(2)),label:x.label.trim(),gender:['male','female','any'].includes(x.gender)?x.gender:'any'}));
   const actionPool=()=>[...PASSION_ACTIONS,...getCustomActions()];
   const saveCustomActions=items=>pairStorage.setItem(CUSTOM_ACTIONS_KEY,JSON.stringify(items));
   const saveCustomBody=items=>pairStorage.setItem(CUSTOM_BODY_KEY,JSON.stringify(items));
@@ -643,119 +579,9 @@ const pairStorage={
     if(currentTarget) currentTarget.textContent=`→ ${participantLabel(target,true)}`;
     refreshBodyPools();
     updateRelativeGameLabels();
-    renderHeatControls();
-    refreshRollPermissions();
-    renderScoreFinishProposal?.();
-    const pg=currentPendingFor?.();
-    if(pg?.gameKey)setResultButtonsEnabled?.(pg.gameKey,true);
   }
-  function gameDebts(){return safeParse(GAME_WISH_DEBTS_KEY,[])}
-  function saveGameDebts(rows){pairStorage.setItem(GAME_WISH_DEBTS_KEY,JSON.stringify(rows));PairDB.save?.();document.dispatchEvent(new CustomEvent('progress:changed'));}
-  function markGameDebtDone(id,syncSession=true,forcedDate=null){
-    const rows=gameDebts();const row=rows.find(x=>x.id===id);if(!row)return;
-    row.wishDone=true;row.wishDoneDate=forcedDate||new Date().toISOString();saveGameDebts(rows);
-    renderProgressPage();
-    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'game-debt-done',id,wishDoneDate:row.wishDoneDate});
-  }
-
-  const scoreFinishModal=$('#scoreFinishModal'), scoreFinishSummary=$('#scoreFinishSummary'),
-        scoreFinishSelfVote=$('#scoreFinishSelfVote'), scoreFinishPartnerVote=$('#scoreFinishPartnerVote'),
-        scoreFinishHint=$('#scoreFinishHint'), scoreFinishAgreeBtn=$('#scoreFinishAgreeBtn'), scoreFinishRejectBtn=$('#scoreFinishRejectBtn');
-  // Keep the active agreement in runtime as well as IndexedDB. This prevents a
-  // delayed pair snapshot from hiding an already-open confirmation dialog.
-  let scoreFinishRuntime=null;
-  function getScoreFinishProposal(){
-    if(scoreFinishRuntime)return scoreFinishRuntime;
-    try{scoreFinishRuntime=JSON.parse(pairStorage.getItem(SCORE_FINISH_PROPOSAL_KEY)||'null');return scoreFinishRuntime}catch{return null}
-  }
-  function setScoreFinishProposal(proposal){
-    scoreFinishRuntime=proposal?JSON.parse(JSON.stringify(proposal)):null;
-    if(proposal)pairStorage.setItem(SCORE_FINISH_PROPOSAL_KEY,JSON.stringify(proposal));
-    else pairStorage.removeItem(SCORE_FINISH_PROPOSAL_KEY);
-    PairDB.save?.();
-    renderScoreFinishProposal();
-    refreshRollPermissions?.();
-  }
-  function renderScoreFinishProposal(){
-    if(!scoreFinishModal)return;
-    const proposal=getScoreFinishProposal();
-    if(!proposal){scoreFinishModal.hidden=true;return;}
-    const names=getNames(), self=getViewRole(), partner=(self+1)%2;
-    const score=Array.isArray(proposal.score)?proposal.score:[0,0];
-    const isTie=Number(score[0])===Number(score[1]);
-    const winner=isTie?null:(Number(score[0])>Number(score[1])?0:1), loser=isTie?null:(winner+1)%2;
-    scoreFinishModal.hidden=false;
-    if(scoreFinishSummary){
-      scoreFinishSummary.textContent=isTie
-        ? `${names[0]||'Гравець 1'} ${score[0]||0} : ${score[1]||0} ${names[1]||'Гравець 2'} · Нічия. Завершити раунд без боргу бажання?`
-        : `${names[0]||'Гравець 1'} ${score[0]||0} : ${score[1]||0} ${names[1]||'Гравець 2'} · ${names[loser]||'Гравець'} виконує бажання ${names[winner]||'партнера'}`;
-    }
-    const approvals=Array.isArray(proposal.approvals)?proposal.approvals:[false,false];
-    if(scoreFinishSelfVote){scoreFinishSelfVote.querySelector('span').textContent=`Ви — ${names[self]||('Гравець '+(self+1))}`;scoreFinishSelfVote.querySelector('strong').textContent=approvals[self]?'Погоджено ✓':'Очікує';scoreFinishSelfVote.classList.toggle('approved',!!approvals[self]);}
-    if(scoreFinishPartnerVote){scoreFinishPartnerVote.querySelector('span').textContent=`Ваш партнер — ${names[partner]||('Гравець '+(partner+1))}`;scoreFinishPartnerVote.querySelector('strong').textContent=approvals[partner]?'Погоджено ✓':'Очікує';scoreFinishPartnerVote.classList.toggle('approved',!!approvals[partner]);}
-    const title=$('#scoreFinishTitle');if(title)title.textContent=isTie?'Підтвердити нічию?':'Підвести результат?';
-    if(scoreFinishAgreeBtn){scoreFinishAgreeBtn.disabled=!!approvals[self];scoreFinishAgreeBtn.textContent=approvals[self]?'Ви погодились ✓':'Погодитись';}
-    if(scoreFinishHint)scoreFinishHint.textContent=approvals[self]&&!approvals[partner]?'Очікуємо рішення партнера…':(!approvals[self]&&approvals[partner]?'Партнер уже погодився. Потрібне ваше підтвердження.':'Для завершення мають погодитися обидва.');
-  }
-  function finalizeScoreProposal(proposal){
-    if(!proposal)return;
-    const current=getScoreFinishProposal();
-    if(current&&current.id!==proposal.id)return;
-    const score=Array.isArray(proposal.score)?proposal.score:[0,0], names=getNames();
-    if(Number(score[0])===Number(score[1])){
-      setScore([0,0]);
-      setScoreFinishProposal(null);
-      syncPlayers();
-      PairDB.save?.();
-      toast('Нічия підтверджена · рахунок скинуто');
-      return;
-    }
-    const winner=Number(score[0])>Number(score[1])?0:1, loser=(winner+1)%2;
-    const debt={id:'game_debt_'+proposal.id,type:'score',debtorIndex:loser,partnerIndex:winner,debtorName:names[loser]||`Гравець ${loser+1}`,partnerName:names[winner]||`Гравець ${winner+1}`,score:[Number(score[0])||0,Number(score[1])||0],date:new Date().toISOString(),wishDone:false};
-    const rows=gameDebts();if(!rows.some(x=>x.id===debt.id))rows.push(debt);saveGameDebts(rows.slice(-300));
-    setScore([0,0]);setScoreFinishProposal(null);syncPlayers();PairDB.save?.();renderProgressPage();
-    toast(`${debt.debtorName} виконує бажання ${debt.partnerName}`);
-  }
-  function focusPendingEvaluation(pg){
-    if(!pg?.gameKey)return;
-    openGame(pg.gameKey,false);
-    refreshPendingResult?.();
-    const box=pg.gameKey==='passion'?$('#passionResultBox'):pg.gameKey==='direct'?$('#directResultBox'):null;
-    if(box){
-      box.hidden=false;
-      box.classList.remove('pending-attention');
-      void box.offsetWidth;
-      box.classList.add('pending-attention');
-      setTimeout(()=>box.classList.remove('pending-attention'),1800);
-      setTimeout(()=>box.scrollIntoView({behavior:'smooth',block:'center'}),60);
-    }
-    const evaluator=(Number(pg.turn)+1)%2;
-    toast(getViewRole()===evaluator?'Оцініть попередній результат':'Очікується оцінка партнера');
-  }
-  function proposeScoreFinish(syncSession=true,forcedProposal=null){
-    const pending=!forcedProposal?currentPendingFor():null;
-    if(pending){focusPendingEvaluation(pending);return;}
-    const score=forcedProposal?.score||getScore();
-    if(!forcedProposal&&!window.SessionSync?.connected){toast('Для спільного підтвердження підключіть партнера до сесії');return;}
-    const existing=getScoreFinishProposal();
-    const proposal=forcedProposal||existing||{id:'score_finish_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),score:[Number(score[0])||0,Number(score[1])||0],approvals:[false,false],requestedBy:getViewRole(),createdAt:new Date().toISOString()};
-    setScoreFinishProposal(proposal);
-    if(scoreFinishModal)scoreFinishModal.hidden=false;
-    if(syncSession&&window.SessionSync?.connected&&!forcedProposal)window.SessionSync.replyUI?.('game-action',{action:'score-finish-propose',proposal});
-  }
-  function voteScoreFinish(agree,syncSession=true,forcedRole=null,proposalId=null){
-    const proposal=getScoreFinishProposal();if(!proposal|| (proposalId&&proposal.id!==proposalId))return;
-    if(!agree){const id=proposal.id;setScoreFinishProposal(null);if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-finish-reject',proposalId:id});toast('Підведення результату скасовано');return;}
-    const role=(forcedRole===0||forcedRole===1)?Number(forcedRole):getViewRole();
-    proposal.approvals=Array.isArray(proposal.approvals)?proposal.approvals:[false,false];proposal.approvals[role]=true;setScoreFinishProposal(proposal);
-    if(syncSession&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'score-finish-vote',proposalId:proposal.id,role,agree:true});
-    if(proposal.approvals[0]&&proposal.approvals[1])finalizeScoreProposal(proposal);
-  }
-  $('#finishScoreBtn')?.addEventListener('click',()=>proposeScoreFinish(true));
-  scoreFinishAgreeBtn?.addEventListener('click',()=>voteScoreFinish(true,true));
-  scoreFinishRejectBtn?.addEventListener('click',()=>voteScoreFinish(false,true));
-  $('#resetScoreBtn')?.addEventListener('click',()=>{if(getScoreFinishProposal()){toast('Спочатку завершіть або відхиліть підведення результату');return;}setScore([0,0]);setTurn(0);syncPlayers()});
-  document.addEventListener('pair:changed',()=>{syncPlayers();renderScoreFinishProposal();});
+  $('#resetScoreBtn')?.addEventListener('click',()=>{setScore([0,0]);setTurn(0);syncPlayers()});
+  document.addEventListener('pair:changed',()=>syncPlayers());
 
   function updateRelativeGameLabels(){
     const self=getViewRole(), partner=(self+1)%2, names=getNames();
@@ -772,32 +598,11 @@ const pairStorage={
     const sf1=$('#secretWishP1Form'),sf2=$('#secretWishP2Form');
     if(sf1)sf1.classList.toggle('private-locked',self!==0);if(sf2)sf2.classList.toggle('private-locked',self!==1);
   }
-
-  function currentLocalTurnAllowed(){
-    if(!window.SessionSync?.connected)return true;
-    const role=window.SessionSync?.role;
-    return (role===0||role===1) && Number(role)===getTurn();
-  }
-  function refreshRollPermissions(){
-    const allowed=currentLocalTurnAllowed();
-    const pendingPassion=currentPendingFor?.('passion');
-    const pendingDirect=currentPendingFor?.('direct');
-    const scoreFinishPending=!!getScoreFinishProposal?.();
-    const pb=$('#passionRollBtn'), db=$('#directRollBtn');
-    const self=getViewRole();
-    const pendingLabel=pg=>pg?(self===(Number(pg.turn)+1)%2?'Оцініть результат':'Очікуємо оцінку партнера'):null;
-    if(pb){pb.disabled=rolling||!allowed||!!pendingPassion||scoreFinishPending;pb.textContent=scoreFinishPending?'Підводимо результат…':(!allowed&&!pendingPassion?'Хід партнера':pendingPassion?pendingLabel(pendingPassion):'Кинути');}
-    if(db){db.disabled=rolling||!allowed||!!pendingDirect||scoreFinishPending;db.textContent=scoreFinishPending?'Підводимо результат…':(!allowed&&!pendingDirect?'Хід партнера':pendingDirect?pendingLabel(pendingDirect):'Кинути');}
-    $$('#directActionChoice .choice-btn').forEach(btn=>{btn.disabled=scoreFinishPending||(window.SessionSync?.connected&&!allowed);});
-  }
-  $$('[data-heat-control] .heat-btn').forEach(btn=>btn.addEventListener('click',()=>setHeat(btn.dataset.heat,{sync:true})));
-  renderHeatControls();
-
   document.addEventListener('session:role-changed',()=>syncPlayers());
 
   function showTab(which, syncSession=true){
-    calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(purchasesSection)purchasesSection.hidden=which!=='purchases'; if(progressSection)progressSection.hidden=which!=='progress';
-    calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); purchasesTabBtn?.classList.toggle('active',which==='purchases'); progressTabBtn?.classList.toggle('active',which==='progress');
+    calendarSection.hidden=which!=='calendar'; placesSection.hidden=which!=='places'; gamesSection.hidden=which!=='games'; if(progressSection)progressSection.hidden=which!=='progress';
+    calendarTabBtn.classList.toggle('active',which==='calendar'); placesTabBtn?.classList.toggle('active',which==='places'); gamesTabBtn.classList.toggle('active',which==='games'); progressTabBtn?.classList.toggle('active',which==='progress');
     if(syncSession && !window.SessionSync?.connected) pairStorage.setItem('sa_main_tab_v1',which);
     document.body.dataset.mainTab=which;
     if(which==='games'){
@@ -809,17 +614,15 @@ const pairStorage={
     }
     if(which==='places') renderPlaces();
     if(which==='progress') renderProgressPage();
-    if(which==='purchases') document.dispatchEvent(new CustomEvent('purchases:render'));
     if(syncSession) window.SessionSync?.sendUI?.('tab',{which});
   }
   calendarTabBtn?.addEventListener('click',()=>showTab('calendar'));
   placesTabBtn?.addEventListener('click',()=>showTab('places'));
   gamesTabBtn?.addEventListener('click',()=>showTab('games'));
-  purchasesTabBtn?.addEventListener('click',()=>showTab('purchases'));
   progressTabBtn?.addEventListener('click',()=>showTab('progress'));
 
   const PAGE_DONE_KEY='sa_position_done_mf', PAGE_DEFERRED_KEY='sa_position_deferred_mf_v1', PAGE_HISTORY_KEY='sa_position_history_mf_v1';
-  const pagePoseOverview=$('#pagePoseOverview'), pagePoseLevels=$('#pagePoseLevels'), pagePlacesOverview=$('#pagePlacesOverview'), pagePlacesCategories=$('#pagePlacesCategories'), pageProgressMonths=$('#pageProgressMonths'), pageDeferredList=$('#pageDeferredList'), pageDeferredCount=$('#pageDeferredCount'), pageGameDebtList=$('#pageGameDebtList'), pageGameDebtCount=$('#pageGameDebtCount'), pagePurchaseStatusList=$('#pagePurchaseStatusList'), pagePurchaseStatusCount=$('#pagePurchaseStatusCount'), pagePlannedPlacesList=$('#pagePlannedPlacesList'), pagePlannedPlacesCount=$('#pagePlannedPlacesCount');
+  const pagePoseOverview=$('#pagePoseOverview'), pagePoseLevels=$('#pagePoseLevels'), pagePlacesOverview=$('#pagePlacesOverview'), pagePlacesCategories=$('#pagePlacesCategories'), pageProgressMonths=$('#pageProgressMonths'), pageDeferredList=$('#pageDeferredList'), pageDeferredCount=$('#pageDeferredCount');
   const POSE_LEVELS=[['Легкий',1,46],['Середній',47,105],['Важкий',106,158],['Складний',159,210],['У ванній',211,254],['У машині',255,294],['Акробатичний',295,312]];
   function pageJSON(key,fallback){try{return JSON.parse(pairStorage.getItem(key)||JSON.stringify(fallback))}catch{return fallback}}
   function renderProgressPage(){
@@ -830,29 +633,11 @@ const pairStorage={
     const posePct=positions.length?Math.round(passed.size/positions.length*100):0;
     if(pagePoseOverview)pagePoseOverview.innerHTML=`<div class="progress-stat"><strong>${passed.size}/${positions.length}</strong><span>зараховано</span></div><div class="progress-stat"><strong>${done.size}</strong><span>виконано</span></div><div class="progress-stat deferred-stat"><strong>${Object.keys(deferred).length}</strong><span>відкладено</span></div><div class="progress-stat"><strong>${posePct}%</strong><span>поз</span></div>`;
     if(pagePoseLevels){pagePoseLevels.innerHTML='';POSE_LEVELS.forEach(([name,from,to])=>{const total=to-from+1,count=positions.filter(x=>x.order_index>=from&&x.order_index<=to&&passed.has(Number(x.id))).length,pct=Math.round(count/total*100);const row=document.createElement('div');row.className='progress-level-row';row.innerHTML=`<div><strong>${name}</strong><span>${count}/${total}</span></div><div class="mini-progress"><span style="width:${pct}%"></span></div><b>${pct}%</b>`;pagePoseLevels.appendChild(row)})}
-    const marked=new Set(pageJSON(PLACES_KEY,[])); const plannedPlaces=new Set(pageJSON(PLACES_PLANNED_KEY,[])); const custom=getCustomPlaces(); const cats=PLACE_CATEGORIES.map(c=>({name:c.name,items:[...c.items]})); custom.forEach(x=>{let c=cats.find(y=>y.name===x.category);if(!c){c={name:x.category||'Мої місця',items:[]};cats.push(c)}c.items.push(x)}); const placeTotal=cats.reduce((s,c)=>s+c.items.length,0), placeDone=[...marked].filter(id=>cats.some(c=>c.items.some(x=>x.id===id))).length, placePlanned=[...plannedPlaces].filter(id=>!marked.has(id)&&cats.some(c=>c.items.some(x=>x.id===id))).length, placePct=placeTotal?Math.round(placeDone/placeTotal*100):0;
-    if(pagePlacesOverview)pagePlacesOverview.innerHTML=`<div class="progress-stat"><strong>${placeDone}/${placeTotal}</strong><span>відзначено</span></div><div class="progress-stat"><strong>${placePlanned}</strong><span>заплановано</span></div><div class="progress-stat"><strong>${placePct}%</strong><span>місць</span></div><div class="progress-stat"><strong>${custom.length}</strong><span>власних</span></div>`;
+    const marked=new Set(pageJSON(PLACES_KEY,[])); const custom=getCustomPlaces(); const cats=PLACE_CATEGORIES.map(c=>({name:c.name,items:[...c.items]})); custom.forEach(x=>{let c=cats.find(y=>y.name===x.category);if(!c){c={name:x.category||'Мої місця',items:[]};cats.push(c)}c.items.push(x)}); const placeTotal=cats.reduce((s,c)=>s+c.items.length,0), placeDone=[...marked].filter(id=>cats.some(c=>c.items.some(x=>x.id===id))).length, placePct=placeTotal?Math.round(placeDone/placeTotal*100):0;
+    if(pagePlacesOverview)pagePlacesOverview.innerHTML=`<div class="progress-stat"><strong>${placeDone}/${placeTotal}</strong><span>відзначено</span></div><div class="progress-stat"><strong>${placePct}%</strong><span>місць</span></div><div class="progress-stat"><strong>${custom.length}</strong><span>власних</span></div>`;
     if(pagePlacesCategories){pagePlacesCategories.innerHTML='';cats.filter(c=>c.items.length).forEach(c=>{const count=c.items.filter(x=>marked.has(x.id)).length,pct=Math.round(count/c.items.length*100);const row=document.createElement('div');row.className='progress-level-row';row.innerHTML=`<div><strong>${c.name}</strong><span>${count}/${c.items.length}</span></div><div class="mini-progress"><span style="width:${pct}%"></span></div><b>${pct}%</b>`;pagePlacesCategories.appendChild(row)})}
     const history=pageJSON(PAGE_HISTORY_KEY,[]), months=new Map(), fmt=new Intl.DateTimeFormat('uk-UA',{month:'long',year:'numeric'}); history.forEach(ev=>{const d=new Date(ev.date);if(isNaN(d))return;const key=fmt.format(d),m=months.get(key)||{date:d,done:0,deferred:0};if(ev.status==='done')m.done++;if(ev.status==='deferred')m.deferred++;months.set(key,m)}); if(pageProgressMonths){pageProgressMonths.innerHTML='';[...months.entries()].sort((a,b)=>b[1].date-a[1].date).forEach(([label,m])=>{const row=document.createElement('div');row.className='month-row';row.innerHTML=`<strong>${label}</strong><span>Виконано: ${m.done}</span><span>Відкладено: ${m.deferred}</span>`;pageProgressMonths.appendChild(row)});if(!months.size)pageProgressMonths.innerHTML='<p class="empty-state">Поки немає історії проходження.</p>'}
     const list=Object.values(deferred).sort((a,b)=>new Date(b.date)-new Date(a.date)); if(pageDeferredCount)pageDeferredCount.textContent=list.length; if(pageDeferredList){pageDeferredList.innerHTML='';list.forEach(info=>{const item=positions.find(x=>Number(x.id)===Number(info.id));if(!item)return;const card=document.createElement('div');card.className='deferred-progress-card'+(info.wishDone?' wish-done':'');card.innerHTML=`<img src="${item.image}" alt="Поза ${item.order_index}"><div><strong>Поза ${item.order_index} · ${item.poseTitle||''}</strong><span>${info.wishDone?'Бажання виконано ✓':`${info.debtorName} має виконати бажання ${info.partnerName}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;const actions=document.createElement('div');actions.className='deferred-card-actions';if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>{const all=pageJSON(PAGE_DEFERRED_KEY,{});if(all[info.id]){all[info.id].wishDone=true;all[info.id].wishDoneDate=new Date().toISOString();pairStorage.setItem(PAGE_DEFERRED_KEY,JSON.stringify(all))}renderProgressPage();document.dispatchEvent(new CustomEvent('progress:changed'))});actions.appendChild(wish)}card.appendChild(actions);pageDeferredList.appendChild(card)});if(!list.length)pageDeferredList.innerHTML='<p class="empty-state">Відкладених поз немає.</p>'}
-    // Purchases: planned + purchased statistics.
-    const purchaseRows=pageJSON('sa_desired_purchases_v1',[]).filter(x=>x&&typeof x==='object');
-    const purchaseStats=purchaseRows.filter(x=>x.purchased||x.planned).sort((a,b)=>Number(b.purchasedAt||b.plannedAt||b.updatedAt||b.createdAt||0)-Number(a.purchasedAt||a.plannedAt||a.updatedAt||a.createdAt||0));
-    if(pagePurchaseStatusCount)pagePurchaseStatusCount.textContent=purchaseStats.length;
-    if(pagePurchaseStatusList){
-      pagePurchaseStatusList.innerHTML='';
-      purchaseStats.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card purchase-stat-card'+(info.purchased?' is-purchased':' is-planned');const qty=Math.max(1,Number(info.qty)||1),total=(Number(info.price)||0)*qty;const safeUrl=(()=>{try{const u=new URL(info.url||'');return (u.protocol==='http:'||u.protocol==='https:')?u.href:''}catch{return ''}})();card.innerHTML=`<div class="game-debt-icon">${info.purchased?'✓':'🗓️'}</div><div class="purchase-stat-main"><strong>${info.name||'Без назви'}</strong><span>${info.purchased?'Придбано':'В планах'} · ${new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(total)} гривень</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.purchasedAt||info.plannedAt||info.updatedAt||info.createdAt||Date.now()))}</small></div>`;const actions=document.createElement('div');actions.className='purchase-stat-actions';if(safeUrl){const a=document.createElement('a');a.className='btn secondary compact purchase-progress-link';a.href=safeUrl;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Відкрити товар ↗';actions.appendChild(a)}if(!info.purchased){const bought=document.createElement('button');bought.type='button';bought.className='btn primary compact purchase-progress-bought';bought.textContent='Позначити як придбано';bought.addEventListener('click',()=>{if(window.requireSyncedPartnerSession&&!window.requireSyncedPartnerSession())return;const all=pageJSON('sa_desired_purchases_v1',[]);const item=all.find(x=>x.id===info.id);if(!item)return;item.purchased=true;item.purchasedBy=window.SessionSync?.role===1?1:0;item.purchasedAt=Date.now();item.planned=false;item.plannedAt=null;item.plannedBy=null;pairStorage.setItem('sa_desired_purchases_v1',JSON.stringify(all));PairDB.save?.();window.SessionSync?.replyUI?.('purchase-action',{action:'purchased',id:item.id,role:item.purchasedBy,value:true,updatedAt:item.purchasedAt});document.dispatchEvent(new CustomEvent('purchases:render'));document.dispatchEvent(new CustomEvent('progress:changed'));renderProgressPage()});actions.appendChild(bought)}if(actions.childElementCount)card.appendChild(actions);pagePurchaseStatusList.appendChild(card)});
-      if(!purchaseStats.length)pagePurchaseStatusList.innerHTML='<p class="empty-state">Поки немає придбаних або запланованих покупок.</p>';
-    }
-    // Places planned for later.
-    const allPlaces=cats.flatMap(c=>c.items.map(x=>({...x,category:c.name})));
-    const plannedList=[...plannedPlaces].filter(id=>!marked.has(id)).map(id=>allPlaces.find(x=>x.id===id)).filter(Boolean);
-    if(pagePlannedPlacesCount)pagePlannedPlacesCount.textContent=plannedList.length;
-    if(pagePlannedPlacesList){pagePlannedPlacesList.innerHTML='';plannedList.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card planned-place-card';card.innerHTML=`<div class="game-debt-icon">📍</div><div><strong>${info.label}</strong><span>Заплановано · ${info.category||'Місце'}</span></div>`;pagePlannedPlacesList.appendChild(card)});if(!plannedList.length)pagePlannedPlacesList.innerHTML='<p class="empty-state">Запланованих місць поки немає.</p>'}
-
-    const gameDebts=pageJSON(GAME_WISH_DEBTS_KEY,[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
-    if(pageGameDebtCount)pageGameDebtCount.textContent=gameDebts.filter(x=>!x.wishDone).length;
-    if(pageGameDebtList){pageGameDebtList.innerHTML='';gameDebts.forEach(info=>{const card=document.createElement('div');card.className='deferred-progress-card game-debt-card'+(info.wishDone?' wish-done':'');const score=Array.isArray(info.score)?`${info.score[0]} : ${info.score[1]}`:'—';card.innerHTML=`<div class="game-debt-icon">🏆</div><div><strong>${info.debtorName||'Гравець'} виконує бажання</strong><span>${info.wishDone?'Бажання виконано ✓':`Для ${info.partnerName||'партнера'} · рахунок ${score}`}</span><small>${new Intl.DateTimeFormat('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(info.date))}</small></div>`;const actions=document.createElement('div');actions.className='deferred-card-actions';if(!info.wishDone){const wish=document.createElement('button');wish.type='button';wish.className='btn primary compact';wish.textContent='Бажання виконано ✓';wish.addEventListener('click',()=>markGameDebtDone(info.id,true));actions.appendChild(wish)}card.appendChild(actions);pageGameDebtList.appendChild(card)});if(!gameDebts.length)pageGameDebtList.innerHTML='<p class="empty-state">Поки немає бажань за результатами ігор.</p>'}
   }
   document.addEventListener('progress:changed',()=>{if(progressSection&&!progressSection.hidden)renderProgressPage()});
   const ACTIVE_GAME_KEY='sa_active_game_v2';
@@ -877,7 +662,6 @@ const pairStorage={
     gamesMenu.hidden=true; gameDetail.hidden=false;
     if(activeGameTitle) activeGameTitle.textContent=meta.title;
     if(playersPanel) playersPanel.hidden=!meta.players;
-    const scoreActions=document.querySelector('.score-actions');if(scoreActions)scoreActions.hidden=!(key==='passion'||key==='direct');
     if(rouletteCustomPanel) rouletteCustomPanel.hidden=!meta.custom;
     Object.entries(gameViews).forEach(([k,v])=>{if(v) v.hidden=k!==key});
     syncPlayers();
@@ -924,7 +708,7 @@ const pairStorage={
 
   function renderPlaces(){
     if(!placesBox) return;
-    const done=new Set(safeParse(PLACES_KEY,[])); const planned=new Set(safeParse(PLACES_PLANNED_KEY,[])); let total=0;
+    const done=new Set(safeParse(PLACES_KEY,[])); let total=0;
     const custom=getCustomPlaces();
     const categories=PLACE_CATEGORIES.map(cat=>({name:cat.name,items:cat.items.map(item=>({...item,custom:false}))}));
     custom.forEach(item=>{
@@ -943,26 +727,21 @@ const pairStorage={
         total++;
         const id=item.id;
         const row=document.createElement('div'); row.className='place-item-row';
-        const b=document.createElement('button'); b.type='button'; b.className='place-item'+(done.has(id)?' done':planned.has(id)?' planned':'');
-        b.innerHTML=`<span>${done.has(id)?'✓':planned.has(id)?'◷':'○'}</span>${item.label}`;
+        const b=document.createElement('button'); b.type='button'; b.className='place-item'+(done.has(id)?' done':'');
+        b.innerHTML=`<span>${done.has(id)?'✓':'○'}</span>${item.label}`;
         b.addEventListener('click',()=>{
-          if(done.has(id)){done.delete(id)}else{done.add(id);planned.delete(id)}
+          done.has(id)?done.delete(id):done.add(id);
           pairStorage.setItem(PLACES_KEY,JSON.stringify([...done]));
-          pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));
           renderPlaces();
           if(progressSection&&!progressSection.hidden)renderProgressPage();
         });
         row.appendChild(b);
-        const plan=document.createElement('button'); plan.type='button'; plan.className='place-plan'+(planned.has(id)&&!done.has(id)?' active':''); plan.title=planned.has(id)?'Прибрати із запланованих':'Додати в заплановано'; plan.setAttribute('aria-label',`${planned.has(id)?'Прибрати із запланованих':'Запланувати'} ${item.label}`); plan.textContent=planned.has(id)&&!done.has(id)?'В планах':'Запланувати'; plan.disabled=done.has(id);
-        plan.addEventListener('click',()=>{if(done.has(id))return;if(window.CouplePlanning?.propose){window.CouplePlanning.propose({type:'place-plan',targetId:id,label:item.label,value:!planned.has(id)});return;}planned.has(id)?planned.delete(id):planned.add(id);pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));renderPlaces();if(progressSection&&!progressSection.hidden)renderProgressPage()});
-        row.appendChild(plan);
         if(item.custom){
           const del=document.createElement('button'); del.type='button'; del.className='place-delete'; del.title='Видалити власне місце'; del.setAttribute('aria-label',`Видалити ${item.label}`); del.textContent='×';
           del.addEventListener('click',()=>{
             const next=getCustomPlaces().filter(x=>x.id!==id);
             saveCustomPlaces(next);
             if(done.delete(id)) pairStorage.setItem(PLACES_KEY,JSON.stringify([...done]));
-            if(planned.delete(id)) pairStorage.setItem(PLACES_PLANNED_KEY,JSON.stringify([...planned]));
             renderPlaceCategorySelect();
             renderPlaces();
           });
@@ -1153,14 +932,12 @@ const pairStorage={
 
   const bodyPoolForTarget=()=>{
     const turn=getTurn(), target=(turn+1)%2, gender=getGenders()[target];
-    const genderPool=[...BODY_PARTS,...getCustomBody()].filter(x=>x.gender==='any'||x.gender===gender);
-    const filtered=heatFilteredBody(genderPool);
-    return (filtered.length?filtered:genderPool).map(x=>x.label);
+    return [...BODY_PARTS,...getCustomBody()].filter(x=>x.gender==='any'||x.gender===gender).map(x=>x.label);
   };
 
   const passionActionSlot=new SyncedPassionReel($('#passionActionReel'),actionPool());
   const passionBodySlot=new SyncedPassionReel($('#passionBodyReel'),bodyPoolForTarget());
-  const directBodySlot=new SyncedPassionReel($('#directBodyReel'),bodyPoolForTarget());
+  const directBodySlot=new SlotReel($('#directBodyReel'),bodyPoolForTarget());
   let pendingGame=null, rolling=false, directAction='Стиснути';
   let lastRollCompletedAt=0;
   let activeRollId=null;
@@ -1187,10 +964,9 @@ const pairStorage={
     if(bodyList){
       bodyList.innerHTML='';
       const genders={any:'для всіх',male:'для чоловіка',female:'для жінки'};
-      const heats={1:'Ніжно',2:'Тепло',3:'Гаряче',4:'Максимум'};
       getCustomBody().forEach((item,index)=>{
         const chip=document.createElement('span'); chip.className='custom-chip';
-        const txt=document.createElement('span'); txt.textContent=`${item.label} · ${genders[item.gender]} · ${heats[item.heat]||heats[1]}`;
+        const txt=document.createElement('span'); txt.textContent=`${item.label} · ${genders[item.gender]}`;
         const rm=document.createElement('button'); rm.type='button'; rm.textContent='×'; rm.title='Видалити';
         rm.onclick=()=>{const arr=getCustomBody();arr.splice(index,1);saveCustomBody(arr);renderCustomOptions();refreshBodyPools()};
         chip.append(txt,rm); bodyList.appendChild(chip);
@@ -1204,14 +980,8 @@ const pairStorage={
     saveCustomActions(arr); if(input)input.value=''; renderCustomOptions(); refreshBodyPools();
   });
   $('#customBodyForm')?.addEventListener('submit',e=>{
-    e.preventDefault();
-    const input=$('#customBodyInput'), gender=$('#customBodyGender'), heat=$('#customBodyHeat');
-    const value=input?.value.trim(); if(!value)return;
-    const heatValue=Math.min(4,Math.max(1,Number(heat?.value)||1));
-    const arr=getCustomBody();
-    if(!arr.some(x=>x.label.toLocaleLowerCase('uk')===value.toLocaleLowerCase('uk')&&x.gender===gender?.value&&Number(x.heat||1)===heatValue)){
-      arr.push({id:'cb_'+Date.now(),label:value,gender:gender?.value||'any',heat:heatValue});
-    }
+    e.preventDefault(); const input=$('#customBodyInput'), gender=$('#customBodyGender'); const value=input?.value.trim(); if(!value)return;
+    const arr=getCustomBody(); if(!arr.some(x=>x.label.toLocaleLowerCase('uk')===value.toLocaleLowerCase('uk')&&x.gender===gender?.value)) arr.push({id:'custom_'+Date.now(),label:value,gender:gender?.value||'any'});
     saveCustomBody(arr); if(input)input.value=''; renderCustomOptions(); refreshBodyPools();
   });
 
@@ -1381,18 +1151,8 @@ const pairStorage={
     setResultButtonsEnabled(gameKey,true);
   }
   function setResultButtonsEnabled(gameKey,enabled){
-    const pg=currentPendingFor(gameKey);
-    const evaluator=pg?(Number(pg.turn)+1)%2:null;
-    const self=getViewRole();
-    const mayEvaluate=!!enabled && pg && self===evaluator;
     const ids=gameKey==='passion'?['passionDoneBtn','passionNoBtn']:gameKey==='direct'?['directDoneBtn','directNoBtn']:[];
-    ids.forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!mayEvaluate});
-    const note=gameKey==='passion'?$('#passionEvaluatorNote'):gameKey==='direct'?$('#directEvaluatorNote'):null;
-    if(note){
-      if(!pg)note.textContent='';
-      else if(mayEvaluate)note.textContent='Оцініть виконання партнера';
-      else note.textContent=`Оцінює ${participantLabel(evaluator,true)}`;
-    }
+    ids.forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=!enabled});
   }
   function currentPendingFor(gameKey){
     let pg=pendingGame;
@@ -1418,8 +1178,6 @@ const pairStorage={
   const pbox=$('#passionResultBox');
   async function runPassionRoll(forced=null,remote=false){
     if(rolling)return;
-    if(!remote&&!currentLocalTurnAllowed()){toast('Зараз хід партнера');refreshRollPermissions();return;}
-    if(!remote&&currentPendingFor('passion')){toast('Спочатку оцініть попередній результат');refreshRollPermissions();return;}
     const button=$('#passionRollBtn'); rolling=true; if(button)button.disabled=true;if(pbox)pbox.hidden=true;refreshBodyPools();
     const rollId=forced?.rollId||('passion_'+Date.now()+'_'+Math.random().toString(36).slice(2,7));
     activeRollId=rollId;
@@ -1432,7 +1190,7 @@ const pairStorage={
       // One absolute start moment gives both peers the same visible beginning.
       // A generous lead time absorbs ordinary WebRTC latency.
       const startAt=Number(forced?.startAt)|| (window.SessionSync?.connected?Date.now()+1000:Date.now());
-      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,startAt,seed,rollId,heat:getHeat()});
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'passion-roll',actionValue:action,bodyValue:body,turn,startAt,seed,rollId});
       await waitUntil(startAt,0);
       const [finalAction,finalBody]=await Promise.all([
         passionActionSlot.spinTo(action,{seed:seed^0x13579bdf,steps:40}),
@@ -1442,49 +1200,38 @@ const pairStorage={
       // These are exactly the centre values left visible by the reels. No second
       // random source and no post-animation replacement.
       showResult('passion',`${finalAction} — ${finalBody}`,$('#passionTurnLabel'),$('#passionResult'),pbox,turn,'result_'+rollId);
-    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;refreshRollPermissions()}
+    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;if(button)button.disabled=false}
   }
   $('#passionRollBtn')?.addEventListener('click',()=>runPassionRoll());
-  $('#passionDoneBtn')?.addEventListener('click',()=>{const pg=currentPendingFor('passion');if(pg&&getViewRole()===(Number(pg.turn)+1)%2)resolveResult(true)});
-  $('#passionNoBtn')?.addEventListener('click',()=>{const pg=currentPendingFor('passion');if(pg&&getViewRole()===(Number(pg.turn)+1)%2)resolveResult(false)});
+  $('#passionDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(true)});
+  $('#passionNoBtn')?.addEventListener('click',()=>{if(currentPendingFor('passion'))resolveResult(false)});
 
   $$('#directActionChoice .choice-btn').forEach(btn=>btn.addEventListener('click',()=>{
-    if(window.SessionSync?.connected&&!currentLocalTurnAllowed()){toast('Зараз хід партнера');return;}
     $$('#directActionChoice .choice-btn').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); directAction=btn.dataset.action;
     window.SessionSync?.replyUI?.('game-action',{action:'direct-choice',directAction});
   }));
   const dbox=$('#directResultBox');
   async function runDirectRoll(forced=null,remote=false){
-    if(rolling)return;
-    if(!remote&&!currentLocalTurnAllowed()){toast('Зараз хід партнера');refreshRollPermissions();return;}
-    if(!remote&&currentPendingFor('direct')){toast('Спочатку оцініть попередній результат');refreshRollPermissions();return;}
-    const button=$('#directRollBtn');
-    rolling=true;
-    if(button)button.disabled=true;
-    if(dbox)dbox.hidden=true;
-    refreshBodyPools();
+    if(rolling)return;const button=$('#directRollBtn');rolling=true;if(button)button.disabled=true;if(dbox)dbox.hidden=true;refreshBodyPools();
     const rollId=forced?.rollId||('direct_'+Date.now()+'_'+Math.random().toString(36).slice(2,7));
     activeRollId=rollId;
     try{
       if(forced?.directAction) directAction=forced.directAction;
       document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));
-      const bp=bodyPoolForTarget();
-      const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
+      const bp=bodyPoolForTarget();const body=forced?.body || bp[Math.floor(Math.random()*bp.length)];
       const turn=(forced?.turn===0||forced?.turn===1)?forced.turn:getTurn();
-      const seed=Number(forced?.seed)||Math.floor(Math.random()*0x7fffffff)||1;
-      const startAt=Number(forced?.startAt)|| (window.SessionSync?.connected?Date.now()+1000:Date.now());
-      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{
-        action:'direct-roll',directAction,body,turn,startAt,seed,rollId,heat:getHeat()
-      });
-      await waitUntil(startAt,0);
-      const finalBody=await directBodySlot.spinTo(body,{seed:seed^0x55aa33cc,steps:38});
+      const delayMs=Number(forced?.delayMs)|| (window.SessionSync?.connected?550:0);
+      if(!remote&&window.SessionSync?.connected)window.SessionSync.replyUI?.('game-action',{action:'direct-roll',directAction,body,turn,delayMs,rollId});
+      if(delayMs)await waitUntil(null,delayMs);
+      await directBodySlot.spinTo(body);
       if(activeRollId!==rollId)return;
-      showResult('direct',`${directAction} — ${finalBody}`,$('#directTurnLabel'),$('#directResult'),dbox,turn,'result_'+rollId);
-    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;refreshRollPermissions()}
+      const visibleBody=directBodySlot.currentValue()||body;
+      showResult('direct',`${directAction} — ${visibleBody}`,$('#directTurnLabel'),$('#directResult'),dbox,turn,'result_'+rollId);
+    }catch(err){console.error(err)}finally{if(activeRollId===rollId)activeRollId=null;rolling=false;if(button)button.disabled=false}
   }
   $('#directRollBtn')?.addEventListener('click',()=>runDirectRoll());
-  $('#directDoneBtn')?.addEventListener('click',()=>{const pg=currentPendingFor('direct');if(pg&&getViewRole()===(Number(pg.turn)+1)%2)resolveResult(true)});
-  $('#directNoBtn')?.addEventListener('click',()=>{const pg=currentPendingFor('direct');if(pg&&getViewRole()===(Number(pg.turn)+1)%2)resolveResult(false)});
+  $('#directDoneBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(true)});
+  $('#directNoBtn')?.addEventListener('click',()=>{if(currentPendingFor('direct'))resolveResult(false)});
 
   function refreshPendingResult(){
     // Do not let a delayed pair/snapshot write replace the result that has just
@@ -1498,7 +1245,7 @@ const pairStorage={
     if(stored.gameKey==='passion'&&pbox){$('#passionTurnLabel').textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;$('#passionResult').textContent=stored.resultText||'—';pbox.hidden=false;pbox.dataset.pendingResultId=stored.id||'';setResultButtonsEnabled('passion',true)}
     if(stored.gameKey==='direct'&&dbox){$('#directTurnLabel').textContent=`${participantLabel(turn,true)} → ${participantLabel(target,true)}`;$('#directResult').textContent=stored.resultText||'—';dbox.hidden=false;dbox.dataset.pendingResultId=stored.id||'';setResultButtonsEnabled('direct',true)}
   }
-  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); refreshPendingResult(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','purchases','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','purchases','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(purchasesSection)purchasesSection.hidden=true; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
+  function refreshPairUI(){ if(!PairDB.active) return; syncPlayers(); refreshPendingResult(); renderPlaces(); renderCustomOptions(); const connected=!!window.SessionSync?.connected; const runtimeTab=document.body.dataset.mainTab; const storedTab=pairStorage.getItem('sa_main_tab_v1'); const t=(connected&&['calendar','places','games','progress'].includes(runtimeTab))?runtimeTab:storedTab; const tab=['calendar','places','games','progress'].includes(t)?t:'calendar'; if(tab==='games'){ if(connected&&document.body.dataset.gameMenu==='1'){showGamesMenu(false,false);return;} const runtimeGame=document.body.dataset.activeGame; const storedGame=pairStorage.getItem(ACTIVE_GAME_KEY); const savedGame=connected?((runtimeGame&&gameMeta[runtimeGame])?runtimeGame:null):storedGame; if(savedGame&&gameMeta[savedGame]){ calendarSection.hidden=true; placesSection.hidden=true; gamesSection.hidden=false; if(progressSection)progressSection.hidden=true; openGame(savedGame,false); } else showTab('games',false);} else showTab(tab,false); }
   document.addEventListener('pair:changed', refreshPairUI);
   document.addEventListener('pair:remote-applied',()=>{if(document.body.dataset.activeGame==='randomPose'){renderRandomLevelFilter();resetRandomPosePreview();}refreshPendingResult();});
   
@@ -1509,15 +1256,10 @@ const pairStorage={
     if(m.kind==='game-menu') showGamesMenu(false,true);
     if(m.kind==='game-action'){
       const a=m.payload?.action;
-      if(a==='passion-roll'){if(m.payload.heat)setHeat(m.payload.heat,{sync:false});openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
-      if(a==='heat-change'){setHeat(m.payload.heat,{sync:false});}
+      if(a==='passion-roll'){openGame('passion',false);runPassionRoll({action:m.payload.actionValue,body:m.payload.bodyValue,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
       if(a==='direct-choice'){openGame('direct',false);directAction=m.payload.directAction||directAction;document.querySelectorAll('#directActionChoice .choice-btn').forEach(x=>x.classList.toggle('active',x.dataset.action===directAction));}
-      if(a==='direct-roll'){if(m.payload.heat)setHeat(m.payload.heat,{sync:false});openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,startAt:m.payload.startAt,seed:m.payload.seed,rollId:m.payload.rollId},true);}
+      if(a==='direct-roll'){openGame('direct',false);runDirectRoll({directAction:m.payload.directAction,body:m.payload.body,turn:m.payload.turn,delayMs:m.payload.delayMs,rollId:m.payload.rollId},true);}
       if(a==='score-resolve'){resolveResult(!!m.payload.completed,false,{gameKey:m.payload.gameKey,turn:m.payload.turn,score:m.payload.score,nextTurn:m.payload.nextTurn});}
-      if(a==='score-finish-propose'&&m.payload.proposal){proposeScoreFinish(false,m.payload.proposal);}
-      if(a==='score-finish-vote'&&m.payload.proposalId){voteScoreFinish(true,false,Number(m.payload.role),m.payload.proposalId);}
-      if(a==='score-finish-reject'&&m.payload.proposalId){const p=getScoreFinishProposal();if(p?.id===m.payload.proposalId){setScoreFinishProposal(null);toast('Партнер відхилив підведення результату');}}
-      if(a==='game-debt-done'&&m.payload.id){markGameDebtDone(m.payload.id,false,m.payload.wishDoneDate||null);}
       if(a==='random-pose-levels'){
         applyRandomPoseLevels(m.payload.ids||[],{sync:false});
         if(document.body.dataset.activeGame==='randomPose')renderRandomLevelFilter();
@@ -1753,7 +1495,7 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     }finally{setTimeout(()=>uiApply=false,100)}
   }
   function scheduleUISnapshot(delay=140){clearTimeout(uiTimer);uiTimer=setTimeout(()=>{if(conn?.open&&!uiApply)send({type:'ui-snapshot',snapshot:captureUI(),origin:peer?.id||null,ts:Date.now()})},delay)}
-  window.SessionSync={sendUI,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open},get ready(){return !!conn?.open&&!restoring&&(localRole===0||localRole===1)&&(remoteRole===0||remoteRole===1)&&remoteRole!==localRole}};
+  window.SessionSync={sendUI,replyUI,snapshot:()=>scheduleUISnapshot(20),get role(){return localRole},get connected(){return !!conn?.open}};
 
   function clearReconnect(){clearTimeout(reconnectTimer);reconnectTimer=null;reconnectAttempts=0}
   function scheduleGuestReconnect(sessionCode){
@@ -1886,422 +1628,4 @@ document.addEventListener('pair:changed',()=>{ try{ document.dispatchEvent(new C
     }
   }
   setTimeout(autoRestore,350);
-})();
-
-
-
-// --- v53: shared desired purchases / couple wishlist ---
-(() => {
-  'use strict';
-  const KEY='sa_desired_purchases_v1';
-  const $=s=>document.querySelector(s);
-  const section=$('#purchasesSection');
-  if(!section)return;
-  const listEl=$('#purchaseList');
-  const form=$('#purchaseForm');
-  const openBtn=$('#openPurchaseFormBtn');
-  const closeBtn=$('#closePurchaseFormBtn');
-  const nameInput=$('#purchaseNameInput');
-  const priceInput=$('#purchasePriceInput');
-  const qtyInput=$('#purchaseQtyInput');
-  const urlInput=$('#purchaseUrlInput');
-  const imageInput=$('#purchaseImageInput');
-  const formTitle=$('#purchaseFormTitle');
-  const formEyebrow=$('#purchaseFormEyebrow');
-  const submitBtn=$('#purchaseSubmitBtn');
-  let filter='all', editingId=null;
-
-  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const rows=()=>{try{const x=JSON.parse(pairStorage.getItem(KEY)||'[]');return Array.isArray(x)?x:[]}catch{return []}};
-  const save=(items,{sync=true,event=null}={})=>{
-    pairStorage.setItem(KEY,JSON.stringify(items));
-    PairDB.save?.();
-    if(sync&&event&&window.SessionSync?.connected)window.SessionSync.replyUI?.('purchase-action',event);
-    render();
-  };
-  const role=()=>{const r=window.SessionSync?.role;return r===0||r===1?Number(r):0};
-  const players=()=>PairDB.active?.players||[{name:'Гравець 1'},{name:'Гравець 2'}];
-  const localRole=()=>role();
-  const fmt=n=>`${new Intl.NumberFormat('uk-UA',{minimumFractionDigits:0,maximumFractionDigits:2}).format(Number(n)||0)} гривень`;
-  const plural=n=>{const a=Math.abs(n)%100,b=a%10;return a>10&&a<20?'товарів':b===1?'товар':b>=2&&b<=4?'товари':'товарів'};
-  const validHttp=u=>{try{const x=new URL(u);return x.protocol==='http:'||x.protocol==='https:'}catch{return false}};
-  function requireSession(){return window.requireSyncedPartnerSession?window.requireSyncedPartnerSession():!!window.SessionSync?.ready}
-  function resetFormMode(){
-    editingId=null;
-    if(formTitle)formTitle.textContent='Додати покупку';
-    if(formEyebrow)formEyebrow.textContent='НОВИЙ ТОВАР';
-    if(submitBtn)submitBtn.textContent='Додати в список';
-  }
-  function openEdit(item){
-    if(!item||Number(item.addedBy)!==localRole())return;
-    if(!requireSession())return;
-    editingId=item.id;
-    nameInput.value=item.name||'';
-    priceInput.value=Number(item.price)||0;
-    qtyInput.value=Math.max(1,Number(item.qty)||1);
-    urlInput.value=item.url||'';
-    imageInput.value=item.imageUrl||'';
-    if(formTitle)formTitle.textContent='Редагувати покупку';
-    if(formEyebrow)formEyebrow.textContent='РЕДАГУВАННЯ';
-    if(submitBtn)submitBtn.textContent='Зберегти зміни';
-    form.hidden=false;
-    nameInput?.focus();
-    form.scrollIntoView({behavior:'smooth',block:'start'});
-  }
-
-  function renderTotals(items){
-    const me=localRole(), partner=me===0?1:0;
-    const sumFor=r=>items.filter(x=>Number(x.addedBy)===r).reduce((s,x)=>s+(Number(x.price)||0)*Math.max(1,Number(x.qty)||1),0);
-    const countFor=r=>items.filter(x=>Number(x.addedBy)===r).reduce((s,x)=>s+Math.max(1,Number(x.qty)||1),0);
-    const total=items.reduce((s,x)=>s+(Number(x.price)||0)*Math.max(1,Number(x.qty)||1),0);
-    const totalCount=items.reduce((s,x)=>s+Math.max(1,Number(x.qty)||1),0);
-    $('#purchaseGrandTotal').textContent=fmt(total);
-    $('#purchaseGrandItems').textContent=`${totalCount} ${plural(totalCount)}`;
-    $('#purchaseSelfTotal').textContent=fmt(sumFor(me));
-    $('#purchaseSelfItems').textContent=`${countFor(me)} ${plural(countFor(me))}`;
-    $('#purchasePartnerTotal').textContent=fmt(sumFor(partner));
-    $('#purchasePartnerItems').textContent=`${countFor(partner)} ${plural(countFor(partner))}`;
-  }
-
-  function voteText(v){return v==='yes'?'Потрібен ✓':v==='no'?'Не потрібен':'Не голосував'}
-  function render(){
-    const all=rows();
-    renderTotals(all);
-    const me=localRole(), partner=me===0?1:0, ps=players();
-    let shown=all;
-    if(filter==='mine')shown=all.filter(x=>Number(x.addedBy)===me);
-    if(filter==='partner')shown=all.filter(x=>Number(x.addedBy)===partner);
-    if(filter==='planned')shown=all.filter(x=>!!x.planned&&!x.purchased);
-    if(filter==='purchased')shown=all.filter(x=>!!x.purchased);
-    $('#purchaseCountBadge').textContent=shown.length;
-    document.querySelectorAll('[data-purchase-filter]').forEach(b=>b.classList.toggle('active',b.dataset.purchaseFilter===filter));
-    listEl.innerHTML='';
-    if(!shown.length){listEl.innerHTML='<div class="purchase-empty"><div>🛍️</div><strong>Список поки порожній</strong><span>Додайте перший бажаний товар.</span></div>';return}
-    [...shown].sort((a,b)=>(Number(b.createdAt)||0)-(Number(a.createdAt)||0)).forEach(item=>{
-      const addedBy=Number(item.addedBy)===1?1:0;
-      const isMine=addedBy===me;
-      const qty=Math.max(1,Number(item.qty)||1), price=Number(item.price)||0, itemTotal=price*qty;
-      const votes=item.votes&&typeof item.votes==='object'?item.votes:{};
-      const myVote=votes[me]||null, partnerVote=votes[partner]||null;
-      const priority=['low','medium','high','urgent'].includes(item.priority)?item.priority:null;
-      const priorityLabels={low:'Низький',medium:'Середній',high:'Високий',urgent:'Дуже високий'};
-      const canSetPriority=!isMine;
-      const card=document.createElement('article');card.className='purchase-card'+(myVote==='yes'&&partnerVote==='yes'?' both-want':'')+(priority?` priority-${priority}`:'')+(item.purchased?' is-purchased':item.planned?' is-planned':'');
-      const img=(item.imageUrl&&validHttp(item.imageUrl))?`<img src="${esc(item.imageUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">`:'<div class="purchase-image-placeholder">🛍️</div>';
-      const productLink=(item.url&&validHttp(item.url))?`<a class="purchase-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">Відкрити товар ↗</a>`:'';
-      card.innerHTML=`
-        <div class="purchase-image">${img}${item.purchased?'<span class="purchase-bought-overlay">Придбано ✓</span>':''}</div>
-        <div class="purchase-card-body">
-          <div class="purchase-card-top"><span class="purchase-owner ${isMine?'mine':'partner'}">${isMine?'Додали ви':`Додав ${esc(ps[addedBy]?.name||'партнер')}`}</span><div class="purchase-card-badges">${myVote==='yes'&&partnerVote==='yes'?'<span class="purchase-approved">Обом потрібен ✓</span>':''}${item.planned&&!item.purchased?'<span class="purchase-plan-badge">В планах</span>':''}${item.purchased?'<span class="purchase-bought-badge">Придбано ✓</span>':''}</div></div>
-          <div class="purchase-title-row"><h3>${esc(item.name||'Без назви')}</h3>${isMine?`<div class="purchase-owner-actions"><button type="button" class="purchase-edit-btn" data-edit-purchase="${esc(item.id)}">Редагувати</button><button type="button" class="purchase-delete-btn" data-delete-purchase="${esc(item.id)}">Видалити</button></div>`:''}</div>
-          <div class="purchase-price-row"><strong>${fmt(price)}</strong><span>× ${qty}</span><b>${qty>1?`= ${fmt(itemTotal)}`:''}</b></div>
-          ${productLink}
-          <div class="purchase-status-actions" data-purchase-status-id="${esc(item.id)}">
-            <button type="button" class="purchase-plan-btn ${item.planned&&!item.purchased?'active':''}" data-toggle-planned="${item.planned&&!item.purchased?'0':'1'}">${item.planned&&!item.purchased?'Прибрати з планів':'🗓️ В планах'}</button>
-            <button type="button" class="purchase-bought-btn ${item.purchased?'active':''}" data-toggle-purchased="${item.purchased?'0':'1'}">${item.purchased?'Повернути в список':'✓ Придбано'}</button>
-          </div>
-          <div class="purchase-priority">
-            <div class="purchase-priority-head"><small>Пріоритет покупки</small><strong class="priority-value ${priority||'none'}">${priority?priorityLabels[priority]:'Не визначено'}</strong></div>
-            ${canSetPriority?`<div class="purchase-priority-actions" data-purchase-priority-id="${esc(item.id)}">
-              <button type="button" class="purchase-priority-btn ${priority==='low'?'active':''}" data-priority="low">Низький</button>
-              <button type="button" class="purchase-priority-btn ${priority==='medium'?'active':''}" data-priority="medium">Середній</button>
-              <button type="button" class="purchase-priority-btn ${priority==='high'?'active':''}" data-priority="high">Високий</button>
-              <button type="button" class="purchase-priority-btn ${priority==='urgent'?'active':''}" data-priority="urgent">Дуже високий</button>
-            </div>`:`<div class="purchase-priority-note">Пріоритет виставляє ваш партнер</div>`}
-          </div>
-          <div class="purchase-votes">
-            <div class="purchase-vote-status"><small>Ви</small><strong class="${myVote||'none'}">${voteText(myVote)}</strong></div>
-            <div class="purchase-vote-status"><small>Ваш партнер</small><strong class="${partnerVote||'none'}">${voteText(partnerVote)}</strong></div>
-          </div>
-          <div class="purchase-vote-actions" data-purchase-id="${esc(item.id)}">
-            <button type="button" class="purchase-vote-btn yes ${myVote==='yes'?'active':''}" data-vote="yes">Потрібен</button>
-            <button type="button" class="purchase-vote-btn no ${myVote==='no'?'active':''}" data-vote="no">Не потрібен</button>
-          </div>
-        </div>`;
-      const bad=card.querySelector('img');if(bad)bad.addEventListener('error',()=>{const wrap=bad.parentElement;wrap.innerHTML='<div class="purchase-image-placeholder">🛍️</div>'},{once:true});
-      listEl.appendChild(card);
-    });
-  }
-
-  openBtn?.addEventListener('click',()=>{if(!requireSession())return;form.reset();qtyInput.value='1';resetFormMode();form.hidden=false;nameInput?.focus();form.scrollIntoView({behavior:'smooth',block:'start'})});
-  closeBtn?.addEventListener('click',()=>{form.hidden=true;form.reset();qtyInput.value='1';resetFormMode()});
-  form?.addEventListener('submit',e=>{
-    e.preventDefault();if(!requireSession())return;
-    const name=nameInput.value.trim(), price=Number(priceInput.value), qty=Math.max(1,Math.floor(Number(qtyInput.value)||1));
-    if(!name||!Number.isFinite(price)||price<0)return;
-    const all=rows();
-    if(editingId){
-      const item=all.find(x=>x.id===editingId);if(!item||Number(item.addedBy)!==localRole())return;
-      item.name=name;item.price=price;item.qty=qty;item.url=urlInput.value.trim();item.imageUrl=imageInput.value.trim();item.updatedAt=Date.now();
-      const patch={name:item.name,price:item.price,qty:item.qty,url:item.url,imageUrl:item.imageUrl,updatedAt:item.updatedAt};
-      save(all,{event:{action:'edit',id:item.id,role:localRole(),patch}});
-    }else{
-      const item={id:'purchase_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),name,price,qty,url:urlInput.value.trim(),imageUrl:imageInput.value.trim(),addedBy:localRole(),votes:{},createdAt:Date.now()};
-      all.push(item);save(all,{event:{action:'add',item}});
-    }
-    form.reset();qtyInput.value='1';form.hidden=true;resetFormMode();
-  });
-  listEl?.addEventListener('click',e=>{
-    const editBtn=e.target.closest('[data-edit-purchase]');
-    if(editBtn){
-      const item=rows().find(x=>x.id===editBtn.dataset.editPurchase);
-      if(item)openEdit(item);
-      return;
-    }
-    const deleteBtn=e.target.closest('[data-delete-purchase]');
-    if(deleteBtn){
-      if(!requireSession())return;
-      const id=deleteBtn.dataset.deletePurchase,all=rows(),item=all.find(x=>x.id===id);if(!item)return;
-      if(Number(item.addedBy)!==localRole())return;
-      if(!window.confirm('Видалити цей товар зі списку?'))return;
-      save(all.filter(x=>x.id!==id),{event:{action:'delete',id,role:localRole()}});
-      return;
-    }
-    const plannedBtn=e.target.closest('[data-toggle-planned]');
-    if(plannedBtn){
-      if(!requireSession())return;
-      const wrap=plannedBtn.closest('[data-purchase-status-id]'),id=wrap?.dataset.purchaseStatusId;if(!id)return;
-      const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
-      const value=plannedBtn.dataset.togglePlanned==='1';
-      if(window.CouplePlanning?.propose){window.CouplePlanning.propose({type:'purchase-plan',targetId:id,label:item.name||'Товар',value});return;}
-      item.planned=value;item.plannedBy=localRole();item.plannedAt=value?Date.now():null;
-      if(value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null;}
-      save(all,{event:{action:'planned',id,role:localRole(),value,updatedAt:Date.now()}});
-      document.dispatchEvent(new CustomEvent('progress:changed'));
-      return;
-    }
-    const purchasedBtn=e.target.closest('[data-toggle-purchased]');
-    if(purchasedBtn){
-      if(!requireSession())return;
-      const wrap=purchasedBtn.closest('[data-purchase-status-id]'),id=wrap?.dataset.purchaseStatusId;if(!id)return;
-      const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
-      const value=purchasedBtn.dataset.togglePurchased==='1';
-      item.purchased=value;item.purchasedBy=localRole();item.purchasedAt=value?Date.now():null;if(value){item.planned=false;item.plannedAt=null;item.plannedBy=null;}
-      save(all,{event:{action:'purchased',id,role:localRole(),value,updatedAt:Date.now()}});document.dispatchEvent(new CustomEvent('progress:changed'));
-      return;
-    }
-    const priorityBtn=e.target.closest('[data-priority]');
-    if(priorityBtn){
-      if(!requireSession())return;
-      const wrap=priorityBtn.closest('[data-purchase-priority-id]'),id=wrap?.dataset.purchasePriorityId;if(!id)return;
-      const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
-      const r=localRole();
-      if(Number(item.addedBy)===r)return;
-      const value=['low','medium','high','urgent'].includes(priorityBtn.dataset.priority)?priorityBtn.dataset.priority:null;if(!value)return;
-      item.priority=value;item.priorityBy=r;item.priorityUpdatedAt=Date.now();
-      save(all,{event:{action:'priority',id,role:r,value,updatedAt:item.priorityUpdatedAt}});
-      return;
-    }
-    const btn=e.target.closest('[data-vote]');if(!btn)return;if(!requireSession())return;
-    const wrap=btn.closest('[data-purchase-id]'),id=wrap?.dataset.purchaseId;if(!id)return;
-    const all=rows(),item=all.find(x=>x.id===id);if(!item)return;
-    const r=localRole(),value=btn.dataset.vote==='yes'?'yes':'no';item.votes ||= {};item.votes[r]=value;
-    save(all,{event:{action:'vote',id,role:r,value}});
-  });
-  document.querySelectorAll('[data-purchase-filter]').forEach(btn=>btn.addEventListener('click',()=>{filter=btn.dataset.purchaseFilter||'all';render()}));
-
-  document.addEventListener('session:remote-ui',e=>{
-    const m=e.detail||{};if(m.kind!=='purchase-action')return;const p=m.payload||{},all=rows();
-    if(p.action==='add'&&p.item&&!all.some(x=>x.id===p.item.id)){all.push(p.item);save(all,{sync:false});return}
-    if(p.action==='edit'){
-      const item=all.find(x=>x.id===p.id);if(!item)return;
-      if(Number(item.addedBy)!==Number(p.role))return;
-      const patch=p.patch||{};
-      item.name=String(patch.name??item.name).slice(0,120);
-      item.price=Math.max(0,Number(patch.price)||0);
-      item.qty=Math.max(1,Math.floor(Number(patch.qty)||1));
-      item.url=String(patch.url??item.url??'');
-      item.imageUrl=String(patch.imageUrl??item.imageUrl??'');
-      item.updatedAt=Number(patch.updatedAt)||Date.now();
-      save(all,{sync:false});return
-    }
-    if(p.action==='delete'){
-      const item=all.find(x=>x.id===p.id);if(!item)return;
-      if(Number(item.addedBy)!==Number(p.role))return;
-      save(all.filter(x=>x.id!==p.id),{sync:false});return
-    }
-    if(p.action==='planned'){
-      const item=all.find(x=>x.id===p.id);if(!item)return;
-      item.planned=!!p.value;item.plannedBy=Number(p.role);item.plannedAt=p.value?(Number(p.updatedAt)||Date.now()):null;if(p.value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null;}save(all,{sync:false});document.dispatchEvent(new CustomEvent('progress:changed'));return
-    }
-    if(p.action==='purchased'){
-      const item=all.find(x=>x.id===p.id);if(!item)return;
-      item.purchased=!!p.value;item.purchasedBy=Number(p.role);item.purchasedAt=p.value?(Number(p.updatedAt)||Date.now()):null;if(p.value){item.planned=false;item.plannedAt=null;item.plannedBy=null;}save(all,{sync:false});document.dispatchEvent(new CustomEvent('progress:changed'));return
-    }
-    if(p.action==='vote'){
-      const item=all.find(x=>x.id===p.id);if(!item)return;item.votes ||= {};item.votes[Number(p.role)]=p.value==='yes'?'yes':'no';save(all,{sync:false});return
-    }
-    if(p.action==='priority'){
-      const item=all.find(x=>x.id===p.id);if(!item)return;
-      const value=['low','medium','high','urgent'].includes(p.value)?p.value:null;if(!value)return;
-      if(Number(item.addedBy)===Number(p.role))return;
-      item.priority=value;item.priorityBy=Number(p.role);item.priorityUpdatedAt=Number(p.updatedAt)||Date.now();save(all,{sync:false});
-    }
-  });
-  document.addEventListener('purchases:render',render);
-  document.addEventListener('pair:changed',()=>{if(!section.hidden)render()});
-  document.addEventListener('pair:remote-applied',()=>{if(!section.hidden)render()});
-  render();
-})();
-
-
-// --- v60: two-player approval for all planning actions ---
-(() => {
-  'use strict';
-  const KEY='sa_couple_planning_proposal_v1';
-  const modal=document.getElementById('planningApprovalModal');
-  const title=document.getElementById('planningApprovalTitle');
-  const summary=document.getElementById('planningApprovalSummary');
-  const icon=document.getElementById('planningApprovalIcon');
-  const selfVote=document.getElementById('planningApprovalSelfVote');
-  const partnerVote=document.getElementById('planningApprovalPartnerVote');
-  const hint=document.getElementById('planningApprovalHint');
-  const agree=document.getElementById('planningApprovalAgreeBtn');
-  const reject=document.getElementById('planningApprovalRejectBtn');
-  let runtime=null;
-  const role=()=>window.SessionSync?.role===1?1:0;
-  const partner=()=>role()===0?1:0;
-  const players=()=>PairDB.active?.players||[{name:'Гравець 1'},{name:'Гравець 2'}];
-  function read(){if(runtime)return runtime;try{runtime=JSON.parse(pairStorage.getItem(KEY)||'null')}catch{runtime=null}return runtime}
-  function store(v){runtime=v?JSON.parse(JSON.stringify(v)):null;if(v)pairStorage.setItem(KEY,JSON.stringify(v));else pairStorage.removeItem(KEY);render()}
-  function notify(msg){let el=document.getElementById('toast');if(!el){el=document.createElement('div');el.id='planningToast';el.className='toast';document.body.appendChild(el)}el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2400)}
-  function describe(p){if(p.type==='purchase-plan')return `${p.value?'Додати у плани':'Прибрати з планів'}: ${p.label||'товар'}`;if(p.type==='place-plan')return `${p.value?'Запланувати місце':'Прибрати місце з планів'}: ${p.label||'місце'}`;return p.label||'Зміна плану'}
-  function render(){if(!modal)return;const p=read();if(!p){modal.hidden=true;return}modal.hidden=false;const me=role(),other=partner(),names=players().map(x=>x?.name||'Гравець');const approvals=Array.isArray(p.approvals)?p.approvals:[false,false];if(icon)icon.textContent=p.type==='place-plan'?'📍':'🛍️';if(title)title.textContent=p.value?'Погодити планування?':'Погодити зміну плану?';if(summary)summary.textContent=describe(p);if(selfVote){selfVote.querySelector('span').textContent=`Ви — ${names[me]||''}`;selfVote.querySelector('strong').textContent=approvals[me]?'Погоджено ✓':'Очікує';selfVote.classList.toggle('approved',!!approvals[me])}if(partnerVote){partnerVote.querySelector('span').textContent=`Ваш партнер — ${names[other]||''}`;partnerVote.querySelector('strong').textContent=approvals[other]?'Погоджено ✓':'Очікує';partnerVote.classList.toggle('approved',!!approvals[other])}if(agree){agree.disabled=!!approvals[me];agree.textContent=approvals[me]?'Ви погодились ✓':'Погодитись'}if(hint)hint.textContent=approvals[me]&&!approvals[other]?'Очікуємо рішення партнера…':(!approvals[me]&&approvals[other]?'Партнер уже погодився. Потрібне ваше підтвердження.':'Для зміни плану мають погодитися обидва.')}
-  function apply(p){if(!p)return;if(p.type==='purchase-plan'){let all=[];try{all=JSON.parse(pairStorage.getItem('sa_desired_purchases_v1')||'[]')}catch{};const item=Array.isArray(all)?all.find(x=>x.id===p.targetId):null;if(item){item.planned=!!p.value;item.plannedBy=p.value?Number(p.initiator):null;item.plannedAt=p.value?Date.now():null;if(p.value){item.purchased=false;item.purchasedAt=null;item.purchasedBy=null}pairStorage.setItem('sa_desired_purchases_v1',JSON.stringify(all));PairDB.save?.();document.dispatchEvent(new CustomEvent('purchases:render'));document.dispatchEvent(new CustomEvent('progress:changed'))}}else if(p.type==='place-plan'){let planned=[];try{planned=JSON.parse(pairStorage.getItem('sa_games_places_planned_v1')||'[]')}catch{};const set=new Set(Array.isArray(planned)?planned:[]);if(p.value)set.add(p.targetId);else set.delete(p.targetId);pairStorage.setItem('sa_games_places_planned_v1',JSON.stringify([...set]));PairDB.save?.();document.dispatchEvent(new CustomEvent('progress:changed'));const btn=document.getElementById('placesTabBtn');if(btn&&btn.classList.contains('active'))btn.dispatchEvent(new Event('noop'))}
-    document.dispatchEvent(new CustomEvent('pair:changed'));
-  }
-  function propose(data){if(window.requireSyncedPartnerSession&&!window.requireSyncedPartnerSession())return;const existing=read();if(existing){render();notify('Спочатку завершіть поточне погодження');return}const p={id:'plan_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),type:data.type,targetId:data.targetId,label:data.label||'',value:!!data.value,initiator:role(),approvals:[false,false],createdAt:Date.now()};store(p);window.SessionSync?.replyUI?.('planning-action',{action:'propose',proposal:p})}
-  function vote(isAgree,remoteRole=null,proposalId=null,sync=true){const p=read();if(!p||proposalId&&p.id!==proposalId)return;const r=remoteRole===0||remoteRole===1?remoteRole:role();if(!isAgree){const id=p.id;store(null);if(sync)window.SessionSync?.replyUI?.('planning-action',{action:'reject',proposalId:id,role:r});notify('Планування скасовано');return}p.approvals ||= [false,false];p.approvals[r]=true;store(p);if(sync)window.SessionSync?.replyUI?.('planning-action',{action:'vote',proposalId:p.id,role:r});if(p.approvals[0]&&p.approvals[1]){apply(p);store(null);notify('План погоджено ✓')}}
-  agree?.addEventListener('click',()=>vote(true));reject?.addEventListener('click',()=>vote(false));
-  document.addEventListener('session:remote-ui',e=>{const m=e.detail||{};if(m.kind!=='planning-action')return;const x=m.payload||{};if(x.action==='propose'&&x.proposal){store(x.proposal);return}if(x.action==='vote'){vote(true,Number(x.role),x.proposalId,false);return}if(x.action==='reject'){const p=read();if(p?.id===x.proposalId){store(null);notify('Партнер відхилив планування')}}});
-  document.addEventListener('pair:changed',render);
-  window.CouplePlanning={propose,render,get active(){return !!read()}};
-  render();
-})();
-
-// --- v51: require a fully synchronized partner session for every shared-state mutation ---
-(() => {
-  'use strict';
-  const NEED_SESSION_TEXT='Для змін потрібна активна сесія з партнером';
-  let noticeTimer=null, lastNotice=0;
-
-  function sessionReady(){ return !!window.SessionSync?.ready; }
-  function showSessionRequired(){
-    const now=Date.now();
-    if(now-lastNotice<350)return;
-    lastNotice=now;
-    let el=document.getElementById('toast');
-    if(!el){
-      el=document.createElement('div');
-      el.id='sessionGuardToast';
-      el.className='toast';
-      document.body.appendChild(el);
-    }
-    el.textContent=NEED_SESSION_TEXT;
-    el.classList.add('show');
-    clearTimeout(noticeTimer);
-    noticeTimer=setTimeout(()=>el.classList.remove('show'),2600);
-  }
-
-  function isViewOnlyButton(btn){
-    if(!btn)return false;
-    if(btn.matches('#backToGamesBtn,#randomPoseOpenBtn,#closePositionDialog,#closeDeferDialog,#closeProgressDialog,#closeAllPositionsDialog'))return true;
-    const txt=(btn.textContent||'').trim();
-    if(/^Відкрити\b/i.test(txt))return true;
-    return false;
-  }
-
-  function isMutationTarget(target){
-    if(!(target instanceof Element))return false;
-
-    // Pair/profile/session setup must stay available, otherwise a session could never be created.
-    if(target.closest('#pairGate,.pair-bar,.main-tabs,#gamesMenu'))return false;
-
-    // Calendar: opening cards/progress is view-only; these controls actually change shared progress/unlocks.
-    if(target.closest('#calendarSection')){
-      if(target.closest('#resetCalendarBtn,#devUnlockAllBtn,.allow-level-btn'))return true;
-      return false;
-    }
-
-    // Places are shared pair data: marks, custom places, category selection while adding, deletion, etc.
-    if(target.closest('#placesSection')){
-      return !!target.closest('button,input,select,textarea,form,.place-item,[data-place-id]');
-    }
-
-    // Progress page mutations are wish/debt completion buttons. Pure reading remains available.
-    if(target.closest('#progressSection')){
-      return !!target.closest('button,input,select,textarea,form');
-    }
-
-    // Desired purchases are shared pair data. Browsing/filtering/link opening is view-only;
-    // adding an item and voting require a synchronized partner session.
-    if(target.closest('#purchasesSection')){
-      if(target.closest('.purchase-filter-btn,.purchase-link,#closePurchaseFormBtn'))return false;
-      return !!target.closest('#openPurchaseFormBtn,#purchaseForm input,#purchaseForm button,.purchase-vote-btn,.purchase-priority-btn,.purchase-edit-btn,.purchase-delete-btn,.purchase-bought-btn,.purchase-plan-btn,form');
-    }
-
-    // Position scratch/reveal/defer/complete mutate shared position state; closing remains view-only.
-    if(target.closest('#positionDialog')){
-      if(target.closest('#closePositionDialog'))return false;
-      return !!target.closest('button,input,select,textarea,form,#positionScratchCanvas');
-    }
-    if(target.closest('#deferDialog')){
-      if(target.closest('#closeDeferDialog'))return false;
-      return !!target.closest('button,input,select,textarea,form');
-    }
-    if(target.closest('#progressDialog')){
-      const btn=target.closest('button');
-      if(btn&&isViewOnlyButton(btn))return false;
-      return !!target.closest('button,input,select,textarea,form');
-    }
-
-    // Every interactive control inside an opened game changes shared gameplay, except navigation/zoom.
-    if(target.closest('#gameDetail')){
-      const btn=target.closest('button');
-      if(btn&&isViewOnlyButton(btn))return false;
-      return !!target.closest('button,input,select,textarea,form,[contenteditable="true"]');
-    }
-
-    // Score-finish confirmation is outside gameDetail and is shared state too.
-    if(target.closest('#scoreFinishModal')){
-      return !!target.closest('button,input,select,textarea,form');
-    }
-
-    // Dynamically rendered debt buttons inside the legacy modal/page.
-    if(target.closest('.deferred-card-actions')){
-      const btn=target.closest('button');
-      if(btn&&isViewOnlyButton(btn))return false;
-      return !!btn;
-    }
-    return false;
-  }
-
-  function blockIfNeeded(e){
-    if(sessionReady() || !isMutationTarget(e.target))return false;
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation?.();
-    showSessionRequired();
-    return true;
-  }
-
-  // Capture phase runs before existing game/progress handlers, so no local-only mutation can slip through.
-  document.addEventListener('click',blockIfNeeded,true);
-  document.addEventListener('pointerdown',e=>{
-    if(sessionReady()||!isMutationTarget(e.target))return;
-    // For text/select/canvas controls stop interaction immediately. Buttons are also caught on click/keyboard.
-    if(e.target.closest('input,select,textarea,#positionScratchCanvas,.place-item,[data-place-id]'))blockIfNeeded(e);
-  },true);
-  document.addEventListener('submit',blockIfNeeded,true);
-  document.addEventListener('change',blockIfNeeded,true);
-  document.addEventListener('beforeinput',blockIfNeeded,true);
-  document.addEventListener('paste',blockIfNeeded,true);
-  document.addEventListener('drop',blockIfNeeded,true);
-
-  // Public helper for future controls/functions added to the project.
-  window.requireSyncedPartnerSession=()=>{
-    if(sessionReady())return true;
-    showSessionRequired();
-    return false;
-  };
 })();
